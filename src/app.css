@@ -1,0 +1,287 @@
+/* Local fonts via @fontsource — zero network requests on startup */
+@import '@fontsource/outfit/500.css';
+@import '@fontsource/outfit/600.css';
+@import '@fontsource/outfit/700.css';
+@import '@fontsource/outfit/800.css';
+@import '@fontsource/outfit/900.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/inter/800.css';
+@import '@fontsource/inter/900.css';
+
+:root {
+  /* Core palette */
+  --bg-dark: #05080f;
+  --bg-panel: rgba(12, 18, 30, 0.75);
+  --bg-card: rgba(18, 26, 42, 0.65);
+  --bg-card-hover: rgba(24, 34, 54, 0.8);
+  --bg-glass: rgba(255, 255, 255, 0.03);
+  --bg-glass-hover: rgba(255, 255, 255, 0.06);
+
+  /* Borders */
+  --border-dim: rgba(255, 255, 255, 0.07);
+  --border-bright: rgba(255, 255, 255, 0.14);
+  --border-glass: rgba(255, 255, 255, 0.10);
+
+  /* Text */
+  --text-main: #f0f4ff;
+  --text-muted: #5c7094;
+  --text-dim: #3d5070;
+
+  /* Accents */
+  --accent-execution: #3b82f6;
+  --accent-arsenal: #8b5cf6;
+  --accent-breach: #ef4444;
+  --accent-archive: #10b981;
+  --accent-chronos: #f59e0b;
+  --accent-economy: #06b6d4;
+  --accent-aborted: #64748b;
+
+  /* Glow shadows */
+  --glow-execution: 0 0 24px rgba(59, 130, 246, 0.18);
+  --glow-arsenal: 0 0 24px rgba(139, 92, 246, 0.18);
+  --glow-breach: 0 0 24px rgba(239, 68, 68, 0.18);
+  --glow-archive: 0 0 24px rgba(16, 185, 129, 0.18);
+  --glow-chronos: 0 0 24px rgba(245, 158, 11, 0.18);
+  --glow-economy: 0 0 24px rgba(6, 182, 212, 0.18);
+
+  /* Glass blur */
+  --blur-md: blur(20px);
+  --blur-sm: blur(12px);
+
+  --font-heavy: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+}
+
+/* ── Reset ── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  animation: page-load 0.4s ease-out;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: var(--font-heavy);
+  font-size: 15px;
+  line-height: 1.55;
+  word-spacing: 0.04em;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+/* Isolate the decorative gradient in its own compositor layer so it
+   never triggers a repaint when interactive children change */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse 60% 40% at 15% 15%, rgba(59, 130, 246, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 35% at 85% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 30% at 50% 50%, rgba(16, 185, 129, 0.04) 0%, transparent 65%);
+}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.25); border-radius: 99px; transition: background 0.2s ease; }
+::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.45); }
+
+/* ── Base elements ── */
+button {
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: none;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  color: var(--text-main);
+  background: rgba(5, 8, 15, 0.7);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  /* No backdrop-filter on inputs — they sit on a solid dark bg so blur
+     does nothing visually but forces a GPU compositing layer per element */
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12), 0 0 16px rgba(59, 130, 246, 0.08);
+}
+
+/* ── Glass card mixin ── */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+}
+
+/* ── Priority Badges ── */
+.badge-tactical {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 99px;
+  border: 1px solid transparent;
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
+}
+
+.badge-low     { background: rgba(59,130,246,0.12); color: #60a5fa; border-color: rgba(59,130,246,0.25); }
+.badge-medium  { background: rgba(245,158,11,0.12); color: #fbbf24; border-color: rgba(245,158,11,0.25); }
+.badge-high    { background: rgba(239,68,68,0.12); color: #f87171; border-color: rgba(239,68,68,0.25); }
+.badge-critical {
+  background: rgba(225,29,72,0.18);
+  color: #fda4af;
+  border-color: rgba(225,29,72,0.4);
+  font-weight: 900;
+  box-shadow: 0 0 10px rgba(225,29,72,0.15);
+}
+
+/* ── Micro-Hover & Tactical Top Accent Rules (Zero GPU Cost) ── */
+.task-card {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.task-card:hover {
+  transform: translateY(-2px);
+}
+
+.task-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.task-card.priority-high::before,
+.task-card:has(.priority-bar.high)::before {
+  background: linear-gradient(90deg, #ef4444, transparent 80%);
+}
+
+.task-card.priority-medium::before,
+.task-card:has(.priority-bar.medium)::before {
+  background: linear-gradient(90deg, #f59e0b, transparent 80%);
+}
+
+.task-card.priority-low::before,
+.task-card:has(.priority-bar.low)::before {
+  background: linear-gradient(90deg, #3b82f6, transparent 80%);
+}
+
+/* ── Tactical Buttons ── */
+.btn-tactical {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 18px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-bright);
+  background: var(--bg-card);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
+  color: var(--text-main);
+  transition: all 0.15s ease;
+}
+
+.btn-tactical:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(255,255,255,0.22);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.btn-tactical:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 0 16px rgba(59,130,246,0.12);
+}
+.btn-primary:hover {
+  background: rgba(59, 130, 246, 0.38);
+  border-color: rgba(59, 130, 246, 0.65);
+  color: #bfdbfe;
+  box-shadow: var(--glow-execution);
+}
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border-color: rgba(239,68,68,0.4);
+}
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.32);
+  border-color: rgba(239,68,68,0.6);
+  box-shadow: var(--glow-breach);
+}
+
+.btn-success {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+  border-color: rgba(16,185,129,0.4);
+}
+.btn-success:hover {
+  background: rgba(16, 185, 129, 0.32);
+  border-color: rgba(16,185,129,0.6);
+  box-shadow: var(--glow-archive);
+}
+
+@keyframes page-load {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Focus-visible ring for keyboard accessibility */
+button:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.6);
+  outline-offset: 2px;
+}
+
+/* Smooth transition for all interactive elements */
+a, button, input, select, textarea {
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+/* Selection styling */
+::selection {
+  background: rgba(139, 92, 246, 0.35);
+  color: #ffffff;
+}
