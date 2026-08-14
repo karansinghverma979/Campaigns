@@ -77,7 +77,8 @@
 
 The main control bar at the top of the viewport handles theater switching, storage settings, and live system status tracking.
 
-![Navbar Screenshot](01_navbar.png)
+<img width="2879" height="1799" alt="Screenshot 2026-08-13 042612" src="https://github.com/user-attachments/assets/449d631b-5cab-42fe-861d-1506975f4436" />
+
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -99,7 +100,12 @@ The main control bar at the top of the viewport handles theater switching, stora
 
 The operational command center for campaigns actively in progress.
 
-![Execution Theater Screenshot](02_execution.png)
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 105855" src="https://github.com/user-attachments/assets/aae94a5d-6e1b-4646-85fa-4d3988d8120c" />
+
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 105904" src="https://github.com/user-attachments/assets/5ea8c36a-5c71-4073-b466-4c91772c2afa" />
+
+
 
 #### Features & Controls:
 - **Search Bar**: Debounced title filtering with instant focus (`/` or `Ctrl + F`) and clear/blur (`Escape`).
@@ -108,13 +114,32 @@ The operational command center for campaigns actively in progress.
 - **Clickable Tag Pills**: Click any tag pill on a card to instantly filter campaigns matching that tag.
 - **Double-Click Title**: Double-clicking a campaign title opens its Markdown briefing note directly in your default editor.
 
+<img width="2879" height="1796" alt="Screenshot 2026-08-13 044746" src="https://github.com/user-attachments/assets/b3f432d3-ccf8-4b3a-9654-009d57b70567" />
+
+<img width="2879" height="1797" alt="Screenshot 2026-08-13 044730" src="https://github.com/user-attachments/assets/2de9fcf7-30fa-400c-a944-fe44582bdeab" />
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-13 044721" src="https://github.com/user-attachments/assets/a1a649f1-38ed-40d5-a14d-1fb79e4cac27" />
+
+
+
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-13 044235" src="https://github.com/user-attachments/assets/85fe9f5d-76ac-451c-8d32-9f5f020c3e34" />
+
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-13 044713" src="https://github.com/user-attachments/assets/9da00434-0f52-47b4-85f9-dd84308cbc1b" />
+
+
+
+
+
 ---
 
 ### 3. Theater 2: Arsenal (Intel & Strategizing)
 
 The strategic planning theater where new ideas are logged, outlined, and cloned.
 
-![Arsenal Theater Screenshot](03_arsenal.png)
+
+<img width="2879" height="1798" alt="Screenshot 2026-08-13 041353" src="https://github.com/user-attachments/assets/9131e2a7-2733-4ddb-b84a-275581e05d40" />
 
 #### Features & Controls:
 - **Log New Intel (`Ctrl + N`)**: Open the campaign creation dialog.
@@ -133,12 +158,21 @@ The strategic planning theater where new ideas are logged, outlined, and cloned.
 
 The crisis recovery theater for campaigns that pass target deadlines without completion.
 
-![Breach Recovery Screenshot](04_breach.png)
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 105912" src="https://github.com/user-attachments/assets/8cae29f8-881a-4486-9cc4-b96abbea11e5" />
+
+
 
 #### Features & Controls:
 - **Auto Breach Detection**: Evaluates campaign deadlines on app launch and automatically transfers overdue items to Breach.
 - **Desktop Alert**: Triggers native Windows desktop notifications on startup when breaches occur.
 - **Reschedule Permit System (`R`)**: Reschedule deadline dates (capped at 2 extensions per campaign).
+
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 105920" src="https://github.com/user-attachments/assets/f4c0fac6-49b8-469a-8c94-f30f8d97297e" />
+
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 105951" src="https://github.com/user-attachments/assets/d60e13bc-0ccd-4a93-9819-2eb9c429f60c" />
+
 
 ---
 
@@ -146,13 +180,31 @@ The crisis recovery theater for campaigns that pass target deadlines without com
 
 The permanent log of finished campaigns and suspended operations.
 
-![Archive Screenshot](05_archive.png)
+<img width="2879" height="1794" alt="Screenshot 2026-08-14 105959" src="https://github.com/user-attachments/assets/4f59cdc1-1621-4653-ad95-a75ed1f85d3f" />
+
 
 #### Features & Controls:
 - **Victory Log**: Green-accented cards recording completed campaigns, target dates, total days spent, and victory notes.
 - **Aborted Log**: Grey-accented cards recording suspended operations with operational justification logs.
 
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 110006" src="https://github.com/user-attachments/assets/37ed5058-fae9-4bf7-952e-1804138633d1" />
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 110014" src="https://github.com/user-attachments/assets/e56b144b-68d0-4edb-b778-92483f387086" />
+
+
+
+
 ---
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 110034" src="https://github.com/user-attachments/assets/7efbdce2-4e25-4cd6-9477-434e55de0e2a" />
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 110049" src="https://github.com/user-attachments/assets/0a561bb9-8672-40ad-a6fb-fce6ccf7134a" />
+
+<img width="2879" height="1799" alt="Screenshot 2026-08-14 110106" src="https://github.com/user-attachments/assets/f1da5533-eca5-4919-ae2e-eb3f0d73262c" />
+
+
+
 
 ## ⌨️ KEYBOARD SHORTCUTS CHEAT SHEET
 
@@ -182,6 +234,10 @@ The permanent log of finished campaigns and suspended operations.
 </div>
 
 ---
+
+<img width="2879" height="1797" alt="Screenshot 2026-08-14 110027" src="https://github.com/user-attachments/assets/2af02971-d8de-4039-9d10-34fb5089dab5" />
+
+
 
 ## 💾 STORAGE ENGINE & DATA ARCHITECTURE
 
