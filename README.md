@@ -77,14 +77,16 @@
 
 The main control bar at the top of the viewport handles theater switching, storage settings, and live system status tracking.
 
+```
+┌───────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [⚔️ CAMPAIGNS]  │  [🔥 EXECUTION]  [🧠 ARSENAL]  [⚠️ BREACH]  [📦 ARCHIVE]  │  [⚙️] [🏷️] [❓] │
+└───────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
 <img width="2879" height="1799" alt="Screenshot 2026-08-13 042612" src="https://github.com/user-attachments/assets/449d631b-5cab-42fe-861d-1506975f4436" />
 
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ [⚔️ CAMPAIGNS]  │  [🔥 EXECUTION]  [🧠 ARSENAL]  [⚠️ BREACH]  [📦 ARCHIVE]  │  [⚙️] [🏷️] [❓] │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+
 
 - **Brand Refresh (`CAMPAIGNS`)**: Displays a spinning indicator during active database operations. Pressing `Ctrl + R` forces a full system resynchronization.
 - **Dynamic Window Title**: Sets the OS window title dynamically (e.g. `Campaigns — 4 Active Execution | 2 Arsenal | 0 Breach`).
@@ -151,6 +153,11 @@ The strategic planning theater where new ideas are logged, outlined, and cloned.
   - Detailed strategy outline development.
   - **Duplicate Button**: Cyan-coded button to clone a strategizing campaign along with all tags and subtasks.
   - **Deploy to Execution (`D`)**: Set deadline date and launch into active Execution.
+
+ <img width="2879" height="1799" alt="Screenshot 2026-08-13 042647" src="https://github.com/user-attachments/assets/a9b7e450-a64d-45b7-ab59-73070fe7744a" />
+
+
+<img width="2879" height="1782" alt="Screenshot 2026-08-13 042742" src="https://github.com/user-attachments/assets/7231ec5f-cd77-40e6-8e2f-e5896670f938" />
 
 ---
 
