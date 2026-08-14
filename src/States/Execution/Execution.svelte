@@ -94,14 +94,14 @@
       // Search query filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const titleMatch = t.title.toLowerCase().includes(q);
-        const tagMatch = t.tags && t.tags.some(tg => tg.tag_name.toLowerCase().includes(q));
+        const titleMatch = t.title ? t.title.toLowerCase().includes(q) : false;
+        const tagMatch = t.tags && t.tags.some(tg => tg && tg.tag_name && tg.tag_name.toLowerCase().includes(q));
         if (!titleMatch && !tagMatch) return false;
       }
 
       // Tags multi-select filter
       if (selectedTagNames.length > 0) {
-        const taskTagNames = (t.tags || []).map(tg => tg.tag_name);
+        const taskTagNames = (t.tags || []).map(tg => tg && tg.tag_name ? tg.tag_name : '').filter(Boolean);
         const hasMatchingTag = selectedTagNames.some(name => taskTagNames.includes(name));
         if (!hasMatchingTag) return false;
       }
