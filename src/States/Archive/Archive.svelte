@@ -4,7 +4,7 @@
   import { ChronosMath } from '../../lib/ChronosMath.js';
   import { 
     CheckCircle2, XCircle, Search, ChevronDown, ArrowUp, ArrowDown, 
-    Tag as TagIcon, Calendar, CheckSquare, Square, Archive as ArchiveIcon
+    Tag as TagIcon, Calendar, Clock, CheckSquare, Square, Archive as ArchiveIcon, X, AlertTriangle
   } from 'lucide-svelte';
   import ArchiveTaskWindow from './ArchiveTaskView/ArchiveTaskWindow.svelte';
 
@@ -42,20 +42,29 @@
     }
   }
 
-  // Action to smoothly scroll highlighted element into view
+  // Action to smoothly scroll highlighted element into view with timer cleanup
   function scrollIfHighlighted(node, isHighlighted) {
+    let timer = null;
     if (isHighlighted) {
-      setTimeout(() => {
-        node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      timer = setTimeout(() => {
+        if (node && node.isConnected) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
       }, 60);
     }
     return {
       update(nextState) {
+        if (timer) clearTimeout(timer);
         if (nextState) {
-          setTimeout(() => {
-            node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          timer = setTimeout(() => {
+            if (node && node.isConnected) {
+              node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
           }, 60);
         }
+      },
+      destroy() {
+        if (timer) clearTimeout(timer);
       }
     };
   }
@@ -91,12 +100,13 @@
         if (t.priority !== filterPriority) return false;
       }
 
-      // Search query filter
+      // Search query filter (matches title, tags, or debrief end note)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const titleMatch = t.title ? t.title.toLowerCase().includes(q) : false;
         const tagMatch = t.tags && t.tags.some(tg => tg && tg.tag_name && tg.tag_name.toLowerCase().includes(q));
-        if (!titleMatch && !tagMatch) return false;
+        const endNoteMatch = t.end_note ? t.end_note.toLowerCase().includes(q) : false;
+        if (!titleMatch && !tagMatch && !endNoteMatch) return false;
       }
 
       // Tags multi-select filter
@@ -115,9 +125,15 @@
       if (sortBy === 'date') {
         const dateA = a.ended_date || a.initiated_at || a.origin_date || '';
         const dateB = b.ended_date || b.initiated_at || b.origin_date || '';
-        comparison = dateA.localeCompare(dateB);
+        const parsedA = ChronosMath.parseDate(dateA);
+        const parsedB = ChronosMath.parseDate(dateB);
+        const timeA = parsedA ? parsedA.getTime() : 0;
+        const timeB = parsedB ? parsedB.getTime() : 0;
+        comparison = timeA - timeB;
       } else if (sortBy === 'name') {
-        comparison = a.title.localeCompare(b.title);
+        const aTitle = (a.title || '');
+        const bTitle = (b.title || '');
+        comparison = aTitle.localeCompare(bTitle, undefined, { sensitivity: 'base', numeric: true });
       }
 
       return sortDir === 'asc' ? comparison : -comparison;
@@ -126,12 +142,20 @@
     return result;
   });
 
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   // Compile once per search query change, not per card render
-  const _searchRegex = $derived(
-    searchQuery.trim()
-      ? new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')})`, 'gi')
-      : null
-  );
+  const _searchRegex = $derived.by(() => {
+    const q = searchQuery.trim();
+    if (!q) return null;
+    try {
+      return new RegExp(`(${escapeRegExp(q)})`, 'gi');
+    } catch (e) {
+      return null;
+    }
+  });
 
   // Split into 2 portions: Aborted & Victory
   const abortedTasks = $derived(filteredTasks.filter(t => t.stage === 'Aborted'));
@@ -154,27 +178,28 @@
     selectedTask = task;
   }
 
-  function closeDetail() {
-    if (selectedTask && selectedTask.id) {
+  function closeDetail(wasModified = false) {
+    if (wasModified && selectedTask && selectedTask.id) {
       store.setHighlightedTaskId(selectedTask.id);
     }
     selectedTask = null;
-    store.loadAllData();
   }
 
-  // Helper for title search highlighting
-  function getTitleParts(title, query) {
+  // Helper for title search highlighting without allocating RegExp objects
+  function getTitleParts(title) {
+    if (!title) return [{ text: '', highlight: false }];
     if (!_searchRegex) return [{ text: title, highlight: false }];
-    const regex = new RegExp(_searchRegex.source, _searchRegex.flags); // clone to reset lastIndex
+    _searchRegex.lastIndex = 0;
     const parts = [];
     let lastIdx = 0;
     let match;
-    while ((match = regex.exec(title)) !== null) {
+    while ((match = _searchRegex.exec(title)) !== null) {
       if (match.index > lastIdx) {
         parts.push({ text: title.substring(lastIdx, match.index), highlight: false });
       }
       parts.push({ text: match[0], highlight: true });
-      lastIdx = regex.lastIndex;
+      lastIdx = _searchRegex.lastIndex;
+      if (!match[0].length) { _searchRegex.lastIndex++; }
     }
     if (lastIdx < title.length) {
       parts.push({ text: title.substring(lastIdx), highlight: false });
@@ -237,6 +262,17 @@
         oninput={(e) => handleSearchInput(e.target.value)}
         class="search-input"
       />
+      {#if _searchRaw || searchQuery || filterPriority !== 'ALL' || selectedTagNames.length > 0}
+        <button 
+          type="button" 
+          class="btn-search-clear" 
+          onclick={() => { _searchRaw = ''; searchQuery = ''; filterPriority = 'ALL'; selectedTagNames = []; }}
+          title="Clear search & filters"
+          aria-label="Clear search and filters"
+        >
+          <X size={13} />
+        </button>
+      {/if}
     </div>
 
     <!-- TAG MULTI-SELECT DROPDOWN -->
@@ -367,15 +403,31 @@
               use:scrollIfHighlighted={store.highlightedTaskId === task.id}
               onclick={(e) => openDetail(task, e)}
             >
-              <span class="priority-bar {task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}"></span>
+              <span class="priority-bar {(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}"></span>
               
-              <div class="card-body-left">
-                <div class="card-header-row">
-                  <span class="meta-date ended"><Calendar size={11} /> Aborted: {task.ended_date || task.origin_date}</span>
+              <div class="card-main-flow">
+                <!-- Top Header: Date on left, Priority Badge on right -->
+                <div class="card-header-top">
+                  <div class="header-left-meta">
+                    <span class="meta-date ended"><Calendar size={12} /> Aborted: {task.ended_date || task.origin_date}</span>
+                    {#if task.is_breached_extracted === 1 || task.is_breached_extracted === true}
+                      <span class="badge-breach-extracted"><AlertTriangle size={11} /> BREACH EXTRACTED</span>
+                    {/if}
+                  </div>
+                  <span class="badge-tactical badge-{(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}">
+                    {task.priority === 'Critical' ? 'High' : (task.priority || 'Medium').toUpperCase()}
+                  </span>
                 </div>
 
-                <h3 class="card-title">
-                  {#each getTitleParts(task.title, searchQuery) as part}
+                <!-- Campaign Title: 100% Full Width, Large, Unrestricted Breathing Room -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <h3 
+                  class="card-title clickable-title" 
+                  ondblclick={(e) => { e.stopPropagation(); store.openStrategiesFile(task); }}
+                  title="Double-click to open Markdown strategy note (.md)"
+                >
+                  {#each getTitleParts(task.title) as part}
                     {#if part.highlight}
                       <mark class="search-highlight">{part.text}</mark>
                     {:else}
@@ -384,19 +436,30 @@
                   {/each}
                 </h3>
 
+                <!-- Tags: Fluid Dynamic Wrap across Multiple Rows -->
                 {#if task.tags && task.tags.length > 0}
                   <div class="tags-row">
                     {#each task.tags as tag}
-                      <span class="tag"><TagIcon size={10} /> {tag.tag_name}</span>
+                      <span class="tag"><TagIcon size={11} /> {tag.tag_name}</span>
                     {/each}
                   </div>
                 {/if}
-              </div>
 
-              <div class="card-right-col">
-                <span class="badge-tactical badge-{task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}">
-                  {task.priority === 'Critical' ? 'High' : task.priority.toUpperCase()}
-                </span>
+                <!-- Debrief Snippet (Visible when search matches or debrief exists) -->
+                {#if task.end_note}
+                  <div class="debrief-snippet">
+                    <span class="debrief-label">DEBRIEF NOTE</span>
+                    <p class="debrief-text">
+                      {#each getTitleParts(task.end_note) as part}
+                        {#if part.highlight}
+                          <mark class="search-highlight">{part.text}</mark>
+                        {:else}
+                          {part.text}
+                        {/if}
+                      {/each}
+                    </p>
+                  </div>
+                {/if}
               </div>
             </div>
           {/each}
@@ -429,15 +492,26 @@
               use:scrollIfHighlighted={store.highlightedTaskId === task.id}
               onclick={(e) => openDetail(task, e)}
             >
-              <span class="priority-bar {task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}"></span>
+              <span class="priority-bar {(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}"></span>
               
-              <div class="card-body-left">
-                <div class="card-header-row">
-                  <span class="meta-date victory-date"><Calendar size={11} /> Completed: {task.ended_date || task.origin_date}</span>
+              <div class="card-main-flow">
+                <!-- Top Header: Date on left, Priority Badge on right -->
+                <div class="card-header-top">
+                  <span class="meta-date victory-date"><Calendar size={12} /> Completed: {task.ended_date || task.origin_date}</span>
+                  <span class="badge-tactical badge-{(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}">
+                    {task.priority === 'Critical' ? 'High' : (task.priority || 'Medium').toUpperCase()}
+                  </span>
                 </div>
 
-                <h3 class="card-title">
-                  {#each getTitleParts(task.title, searchQuery) as part}
+                <!-- Campaign Title: 100% Full Width, Large, Unrestricted Breathing Room -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <h3 
+                  class="card-title clickable-title" 
+                  ondblclick={(e) => { e.stopPropagation(); store.openStrategiesFile(task); }}
+                  title="Double-click to open Markdown strategy note (.md)"
+                >
+                  {#each getTitleParts(task.title) as part}
                     {#if part.highlight}
                       <mark class="search-highlight">{part.text}</mark>
                     {:else}
@@ -446,19 +520,30 @@
                   {/each}
                 </h3>
 
+                <!-- Tags: Fluid Dynamic Wrap across Multiple Rows -->
                 {#if task.tags && task.tags.length > 0}
                   <div class="tags-row">
                     {#each task.tags as tag}
-                      <span class="tag"><TagIcon size={10} /> {tag.tag_name}</span>
+                      <span class="tag"><TagIcon size={11} /> {tag.tag_name}</span>
                     {/each}
                   </div>
                 {/if}
-              </div>
 
-              <div class="card-right-col">
-                <span class="badge-tactical badge-{task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}">
-                  {task.priority === 'Critical' ? 'High' : task.priority.toUpperCase()}
-                </span>
+                <!-- Debrief Snippet (Visible when search matches or debrief exists) -->
+                {#if task.end_note}
+                  <div class="debrief-snippet victory">
+                    <span class="debrief-label">DEBRIEF NOTE</span>
+                    <p class="debrief-text">
+                      {#each getTitleParts(task.end_note) as part}
+                        {#if part.highlight}
+                          <mark class="search-highlight">{part.text}</mark>
+                        {:else}
+                          {part.text}
+                        {/if}
+                      {/each}
+                    </p>
+                  </div>
+                {/if}
               </div>
             </div>
           {/each}
@@ -470,9 +555,9 @@
 
 </div>
 
-<!-- Task Detail Centered Modal Window (Read-Only) -->
+<!-- Task Detail Centered Modal Window -->
 {#if selectedTask}
-  <ArchiveTaskWindow task={selectedTask} onClose={closeDetail} />
+  <ArchiveTaskWindow task={selectedTask} onClose={() => selectedTask = null} />
 {/if}
 
 <style>
@@ -494,8 +579,8 @@
     gap: 12px;
     padding: 14px 20px;
     background: rgba(10, 15, 26, 0.90);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-wrap: nowrap;
     width: 100%;
@@ -541,7 +626,7 @@
 
   .dropdown-menu {
     position: absolute; top: calc(100% + 8px); right: 0; z-index: 99999; min-width: 190px; max-height: 260px; overflow-y: auto;
-    background: rgba(12, 17, 30, 0.98); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); border: 1px solid rgba(139, 92, 246, 0.35); border-radius: var(--radius-md); box-shadow: 0 16px 40px rgba(0,0,0,0.85); padding: 6px 0;
+    background: rgba(12, 17, 30, 0.98); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(139, 92, 246, 0.35); border-radius: var(--radius-md); box-shadow: 0 16px 40px rgba(0,0,0,0.85); padding: 6px 0;
   }
   .dropdown-item { display: block; width: 100%; padding: 9px 16px; text-align: left; font-size: 12px; font-weight: 700; color: var(--text-muted); transition: all 0.12s ease; border: none; background: none; cursor: pointer; }
   .dropdown-item:hover { background: rgba(255,255,255,0.07); color: var(--text-main); }
@@ -559,6 +644,52 @@
   }
   .sort-dir-btn:hover { background: rgba(139, 92, 246, 0.20); border-color: rgba(139, 92, 246, 0.40); color: #ddd6fe; }
 
+  .btn-search-clear {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 0;
+  }
+  .btn-search-clear:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.60);
+    color: #fee2e2;
+    transform: translateY(-50%) scale(1.1);
+  }
+
+  .header-left-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .badge-breach-extracted {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.40);
+    color: #fca5a5;
+  }
+
   /* ── 2 PORTIONS SPLIT LAYOUT ── */
   .archive-split-body {
     flex: 1;
@@ -574,8 +705,8 @@
     display: flex;
     flex-direction: column;
     background: rgba(10, 15, 26, 0.65);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     border-radius: 20px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     overflow: hidden;
@@ -613,44 +744,43 @@
   .panel-badge-count.aborted { color: #f87171; background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(239, 68, 68, 0.35); }
   .panel-badge-count.victory { color: #34d399; background: rgba(52, 211, 153, 0.18); border: 1px solid rgba(52, 211, 153, 0.35); }
 
+  /* ── AUTO-EXPANDING DYNAMIC TASK CARDS (NATURAL FLOW & ZERO CUTOFF) ── */
   .archive-cards-list {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
+    padding: 20px 22px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
   }
 
   .task-card {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 100px;
+    flex-direction: row;
+    align-items: stretch;
+    flex-shrink: 0;
     height: auto;
-    padding-right: 18px;
-    background: rgba(14, 20, 33, 0.75);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    min-height: 110px;
+    background: rgba(10, 16, 30, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 22px;
+    border-radius: 18px;
     overflow: hidden;
     cursor: pointer;
-    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.15s ease, background 0.15s ease;
     width: 100%;
     box-sizing: border-box;
   }
   .task-card.aborted-card:hover {
-    border-color: rgba(239, 68, 68, 0.45);
-    background: rgba(35, 18, 25, 0.88);
+    border-color: rgba(239, 68, 68, 0.55);
+    background: rgba(35, 18, 25, 0.98);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.45), 0 0 20px rgba(239, 68, 68, 0.20);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.55), 0 0 28px rgba(239, 68, 68, 0.28);
   }
   .task-card.victory-card:hover {
-    border-color: rgba(52, 211, 153, 0.45);
-    background: rgba(14, 32, 28, 0.88);
+    border-color: rgba(52, 211, 153, 0.55);
+    background: rgba(14, 32, 28, 0.98);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.45), 0 0 20px rgba(52, 211, 153, 0.20);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.55), 0 0 28px rgba(52, 211, 153, 0.28);
   }
   .task-card.just-updated {
     animation: highlightCardPulse 2.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -663,36 +793,106 @@
     100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); transform: scale(1); }
   }
 
-  .priority-bar { width: 4px; flex-shrink: 0; display: block; align-self: stretch; }
+  .priority-bar { width: 5px; flex-shrink: 0; display: block; align-self: stretch; }
   .priority-bar.high   { background: linear-gradient(180deg, #ef4444, #dc2626); }
   .priority-bar.medium { background: linear-gradient(180deg, #f59e0b, #d97706); }
   .priority-bar.low    { background: linear-gradient(180deg, #3b82f6, #2563eb); }
 
-  .card-body-left {
-    flex: 1; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  .card-main-flow {
+    flex: 1 1 auto;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    height: auto;
+    box-sizing: border-box;
   }
 
-  .card-header-row { display: flex; align-items: center; gap: 10px; }
-  .meta-date.ended { font-size: 11px; font-weight: 700; color: #f87171; }
-  .meta-date.victory-date { font-size: 11px; font-weight: 700; color: #34d399; }
+  .card-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .meta-date.ended { font-size: 11.5px; font-weight: 700; color: #f87171; letter-spacing: 0.02em; flex-shrink: 0; }
+  .meta-date.victory-date { font-size: 11.5px; font-weight: 700; color: #34d399; letter-spacing: 0.02em; flex-shrink: 0; }
 
   .card-title {
-    font-size: 14.5px; font-weight: 900; line-height: 1.35; color: #f3e8ff; letter-spacing: 0.02em; word-break: break-word; margin: 0;
+    font-size: 16.5px;
+    font-weight: 800;
+    line-height: 1.65;
+    color: #f8fafc;
+    letter-spacing: 0.015em;
+    word-spacing: 0.04em;
+    word-break: break-word;
+    white-space: normal;
+    margin: 2px 0;
+    flex-shrink: 0;
   }
 
   :global(.search-highlight) { background: rgba(245, 158, 11, 0.35); color: #fef3c7; padding: 0 2px; border-radius: 2px; }
 
-  .tags-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
-  .tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.04em; color: #ddd6fe; background: rgba(139,92,246,0.12); padding: 3px 9px; border-radius: 99px; border: 1px solid rgba(139,92,246,0.25); }
-
-  .card-right-col {
+  .tags-row {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    padding: 12px 16px;
-    border-left: 1px solid rgba(255,255,255,0.06);
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 2px;
     flex-shrink: 0;
-    min-width: 80px;
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #ddd6fe;
+    background: rgba(139, 92, 246, 0.12);
+    padding: 3px 10px;
+    border-radius: 99px;
+    border: 1px solid rgba(139, 92, 246, 0.22);
+    flex-shrink: 0;
+  }
+  .archive-stage-stamp.victory { color: rgba(52, 211, 153, 0.75); }
+  .archive-stage-stamp.aborted { color: rgba(239, 68, 68, 0.75); }
+
+  /* Debrief note card snippet */
+  .debrief-snippet {
+    margin-top: 4px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.20);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .debrief-snippet.victory {
+    background: rgba(52, 211, 153, 0.08);
+    border-color: rgba(52, 211, 153, 0.20);
+  }
+  .debrief-label {
+    font-size: 9.5px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    word-spacing: 0.06em;
+    color: var(--text-dim);
+  }
+  .debrief-text {
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.45;
+    word-spacing: 0.04em;
+    color: #cbd5e1;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .empty-state-panel {

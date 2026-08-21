@@ -18,7 +18,6 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div 
     class="modal-overlay" 
-    onclick={() => store.isHelpModalOpen = false}
     onkeydown={handleOverlayKeyDown}
   >
     <div class="modal-card" onclick={(e) => e.stopPropagation()}>
@@ -126,8 +125,40 @@
                 <span class="shortcut-desc">Switch to <strong>ARCHIVE</strong> (Victory & Aborted)</span>
               </div>
               <div class="shortcut-card">
+                <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>5</kbd></span>
+                <span class="shortcut-desc">Switch to <strong>STRIKES</strong> (Target Directives)</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>D</kbd></span>
+                <span class="shortcut-desc">Switch Strikes to <strong>DAY</strong> view</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>W</kbd></span>
+                <span class="shortcut-desc">Switch Strikes to <strong>WEEK</strong> view</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>3</kbd></span>
+                <span class="shortcut-desc">Switch Strikes to <strong>3 DAYS</strong> view</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>S</kbd></span>
+                <span class="shortcut-desc">Switch Strikes to <strong>SCHEDULE</strong> view</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>T</kbd></span>
+                <span class="shortcut-desc"><strong>RETURN TO TODAY</strong> in Strikes</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>←</kbd> / <kbd>→</kbd></span>
+                <span class="shortcut-desc"><strong>STEP DATE</strong> backward / forward (when no card focused)</span>
+              </div>
+              <div class="shortcut-card">
                 <span class="key-combo"><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd></span>
-                <span class="shortcut-desc">Single-Key <strong>TAB CYCLING</strong> (Exec ↔ Ars ↔ Breach ↔ Arch)</span>
+                <span class="shortcut-desc">Single-Key <strong>TAB CYCLING</strong> (Exec ↔ Ars ↔ Breach ↔ Arch ↔ Strikes)</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
+                <span class="shortcut-desc"><strong>NEW DIRECTIVE / CAMPAIGN</strong> (Context-aware creation)</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>F</kbd> or <kbd>/</kbd></span>
@@ -136,6 +167,10 @@
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>P</kbd></span>
                 <span class="shortcut-desc">Cycle <strong>PRIORITY FILTERS</strong> (ALL/HIGH/MED/LOW)</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>Esc</kbd></span>
+                <span class="shortcut-desc"><strong>SMART ESCAPE</strong> (Dismiss Pickers → Clear Text → Close Windows)</span>
               </div>
             </div>
           </div>
@@ -178,11 +213,45 @@
             </div>
           </div>
 
-          <!-- Category C: Subtask & Micro-Step Protocols -->
+          <!-- Category C: Strikes Day View Card Controls -->
+          <div class="category-block">
+            <div class="category-header strikes-kb">
+              <Zap size={14} />
+              <span>3. STRIKES DAY VIEW — CARD KEYBOARD CONTROLS</span>
+            </div>
+            <div class="shortcut-grid">
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>J</kbd> / <kbd>K</kbd> or <kbd>↓</kbd> / <kbd>↑</kbd></span>
+                <span class="shortcut-desc">Navigate &amp; Focus <strong>STRIKE CARDS</strong> in Day View</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>Space</kbd></span>
+                <span class="shortcut-desc">Toggle <strong>STATUS</strong> of focused Strike (Standby → Engaged → Neutralized)</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>Enter</kbd> or <kbd>E</kbd></span>
+                <span class="shortcut-desc">Open <strong>EDIT MODAL</strong> for focused Strike</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>Delete</kbd> or <kbd>X</kbd></span>
+                <span class="shortcut-desc"><strong>PURGE</strong> focused Strike (confirmation required)</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>N</kbd></span>
+                <span class="shortcut-desc">Open <strong>NEW STRIKE DIRECTIVE</strong> Creation Modal</span>
+              </div>
+              <div class="shortcut-card">
+                <span class="key-combo"><kbd>Esc</kbd></span>
+                <span class="shortcut-desc"><strong>CLEAR</strong> card focus / Close active Strikes modal</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category D: Subtask & Micro-Step Protocols -->
           <div class="category-block">
             <div class="category-header subtasks">
               <Layers size={14} />
-              <span>3. SUBTASK & MICRO-STEP PROTOCOLS (INSIDE TASK WINDOW)</span>
+              <span>4. SUBTASK & MICRO-STEP PROTOCOLS (INSIDE TASK WINDOW)</span>
             </div>
             <div class="shortcut-grid">
               <div class="shortcut-card">
@@ -216,7 +285,7 @@
           <div class="category-block">
             <div class="category-header system">
               <FolderCog size={14} />
-              <span>4. SYSTEM, STORAGE & DEBUG COMMANDS</span>
+              <span>5. SYSTEM, STORAGE &amp; DEBUG COMMANDS</span>
             </div>
             <div class="shortcut-grid">
               <div class="shortcut-card">
@@ -323,11 +392,14 @@
 <style>
   .modal-overlay {
     position: fixed;
-    inset: 0;
-    z-index: 99995;
+    top: 64px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 8000;
     background: rgba(4, 7, 14, 0.88);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -342,11 +414,11 @@
 
   .modal-card {
     width: 100%;
-    max-width: 920px;
-    max-height: calc(100vh - 74px);
+    max-width: 1040px;
+    max-height: 80vh;
     background: rgba(12, 17, 29, 0.98);
     border: 1px solid rgba(139, 92, 246, 0.40);
-    border-radius: 24px;
+    border-radius: 26px;
     box-shadow: 0 28px 72px rgba(0, 0, 0, 0.92), 0 0 44px rgba(139, 92, 246, 0.22);
     display: flex;
     flex-direction: column;
@@ -390,23 +462,26 @@
   }
 
   .close-btn {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    color: var(--text-muted);
+    width: 36px;
+    height: 36px;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
+    color: #94a3b8;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
   .close-btn:hover {
-    background: rgba(239, 68, 68, 0.2);
-    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.7);
     color: #fca5a5;
+    transform: rotate(90deg) scale(1.08);
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.45);
   }
 
   .guide-body {
@@ -538,6 +613,7 @@
   .category-header.nav { color: #60a5fa; }
   .category-header.card-ctrl { color: #c4b5fd; }
   .category-header.subtasks { color: #a7f3d0; }
+  .category-header.strikes-kb { color: #fcd34d; }
   .category-header.system { color: #fbbf24; }
 
   .shortcut-grid {
@@ -640,14 +716,15 @@
   }
 
   .btn-guide-close {
-    padding: 8px 18px;
+    padding: 10px 24px;
     font-size: 11.5px;
     font-weight: 900;
     letter-spacing: 0.06em;
+    word-spacing: 0.06em;
     color: #f3e8ff;
     background: rgba(139, 92, 246, 0.25);
     border: 1px solid rgba(139, 92, 246, 0.5);
-    border-radius: 10px;
+    border-radius: 9999px;
     cursor: pointer;
     transition: all 0.15s ease;
   }
@@ -655,5 +732,6 @@
     background: rgba(139, 92, 246, 0.4);
     border-color: rgba(168, 85, 247, 0.7);
     transform: translateY(-1px);
+    box-shadow: 0 0 16px rgba(139, 92, 246, 0.35);
   }
 </style>

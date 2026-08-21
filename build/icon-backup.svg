@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Glassmorphic Radial/Linear Gradient -->
+    <linearGradient id="circleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e183a" stop-opacity="0.95" />
+      <stop offset="30%" stop-color="#181e3d" stop-opacity="0.92" />
+      <stop offset="70%" stop-color="#10152a" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#090d1a" stop-opacity="0.98" />
+    </linearGradient>
+
+    <!-- Overlay Gradient (rgba(139,92,246,0.35) -> rgba(59,130,246,0.25)) -->
+    <linearGradient id="overlayGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.55" />
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.40" />
+    </linearGradient>
+
+    <!-- Border Ring Gradient -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c4b5fd" stop-opacity="0.85" />
+      <stop offset="50%" stop-color="#8b5cf6" stop-opacity="0.75" />
+      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.65" />
+    </linearGradient>
+
+    <!-- Inset Top Light Highlight -->
+    <linearGradient id="insetTop" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.30" />
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.0" />
+    </linearGradient>
+
+  </defs>
+
+  <!-- Circular Outer Soft Ring -->
+  <circle cx="256" cy="256" r="248" fill="none" stroke="#8b5cf6" stroke-width="4" opacity="0.25" />
+
+  <!-- Main Circle Base (.brand-logo: linear-gradient(135deg, rgba(139,92,246,0.35) 0%, rgba(59,130,246,0.25) 100%)) -->
+  <circle cx="256" cy="256" r="244" fill="url(#circleGrad)" />
+  <circle cx="256" cy="256" r="244" fill="url(#overlayGrad)" />
+
+  <!-- Inset Top Glass Highlight (inset 0 1px 0 rgba(255,255,255,0.20)) -->
+  <circle cx="256" cy="256" r="244" fill="url(#insetTop)" />
+
+  <!-- Border Ring: 1.5px solid rgba(139,92,246,0.65) scaled to 512px -->
+  <circle cx="256" cy="256" r="242" fill="none" stroke="url(#borderGrad)" stroke-width="12" />
+
+  <!-- ── Swords Icon (.logo-swords): Scaled from 24x24 viewBox ── -->
+  <!-- Layer 1: Ambient Outer Glow Stroke (drop-shadow equivalent) -->
+  <g transform="translate(112, 112) scale(12)" 
+     fill="none" 
+     stroke="#a78bfa" 
+     stroke-width="5.5" 
+     stroke-linecap="round" 
+     stroke-linejoin="round"
+     opacity="0.35">
+    <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+    <line x1="13" x2="19" y1="19" y2="13" />
+    <line x1="16" x2="20" y1="16" y2="20" />
+    <line x1="19" x2="21" y1="21" y2="19" />
+    <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+    <line x1="5" x2="9" y1="14" y2="18" />
+    <line x1="7" x2="4" y1="17" y2="20" />
+    <line x1="3" x2="5" y1="19" y2="21" />
+  </g>
+
+  <!-- Layer 2: Mid Glow Stroke -->
+  <g transform="translate(112, 112) scale(12)" 
+     fill="none" 
+     stroke="#c4b5fd" 
+     stroke-width="3.8" 
+     stroke-linecap="round" 
+     stroke-linejoin="round"
+     opacity="0.55">
+    <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+    <line x1="13" x2="19" y1="19" y2="13" />
+    <line x1="16" x2="20" y1="16" y2="20" />
+    <line x1="19" x2="21" y1="21" y2="19" />
+    <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+    <line x1="5" x2="9" y1="14" y2="18" />
+    <line x1="7" x2="4" y1="17" y2="20" />
+    <line x1="3" x2="5" y1="19" y2="21" />
+  </g>
+
+  <!-- Layer 3: Main Core Stroke (stroke-width: 2.5) -->
+  <g transform="translate(112, 112) scale(12)" 
+     fill="none" 
+     stroke="#f3e8ff" 
+     stroke-width="2.5" 
+     stroke-linecap="round" 
+     stroke-linejoin="round">
+    <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+    <line x1="13" x2="19" y1="19" y2="13" />
+    <line x1="16" x2="20" y1="16" y2="20" />
+    <line x1="19" x2="21" y1="21" y2="19" />
+    <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+    <line x1="5" x2="9" y1="14" y2="18" />
+    <line x1="7" x2="4" y1="17" y2="20" />
+    <line x1="3" x2="5" y1="19" y2="21" />
+  </g>
+</svg>

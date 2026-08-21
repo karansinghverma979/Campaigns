@@ -17,8 +17,10 @@
   import Arsenal from './States/Arsenal/Arsenal.svelte';
   import Breach from './States/Breach/Breach.svelte';
   import Archive from './States/Archive/Archive.svelte';
+  import Strikes from './States/Strikes/Strikes.svelte';
 
-  import { Plus } from 'lucide-svelte';
+
+
 
   // Cached DOM reference to avoid querySelector on every keypress
   let _cachedSearchInput = null;
@@ -40,6 +42,17 @@
 
   onMount(() => {
     store.init();
+
+    if (window.electronAPI && window.electronAPI.onWindowFocusChange) {
+      const unsub = window.electronAPI.onWindowFocusChange(({ isFocused }) => {
+        if (isFocused) {
+          document.body.classList.remove('window-inactive');
+        } else {
+          document.body.classList.add('window-inactive');
+        }
+      });
+      return unsub;
+    }
   });
 
   function handleKeyDown(e) {
@@ -48,18 +61,31 @@
     const isInputFocused = activeEl && (
       activeEl.tagName === 'INPUT' || 
       activeEl.tagName === 'TEXTAREA' || 
+      activeEl.tagName === 'SELECT' || 
       activeEl.isContentEditable
+    );
+
+    const isAnyModalOpen = (
+      store.isTaskModalOpen || 
+      store.isHelpModalOpen || 
+      store.isDebugModalOpen || 
+      store.isConfigModalOpen || 
+      store.isTagManagerOpen || 
+      store.isStrikeModalOpen ||
+      Boolean(document.querySelector('.modal-overlay, .modal-backdrop, .task-window-overlay, .detail-overlay, .dialog-overlay, .strike-modal-backdrop, .custom-modal-backdrop'))
     );
     
     // Ctrl+? or Ctrl+/ for Quick User Guide
     if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/')) {
       e.preventDefault();
-      store.isHelpModalOpen = !store.isHelpModalOpen;
+      const wasOpen = store.isHelpModalOpen;
+      store.closeAllModals();
+      store.isHelpModalOpen = !wasOpen;
       return;
     }
 
-    // Ctrl+F or '/' (when not typing) to focus search bar immediately
-    if (((e.ctrlKey || e.metaKey) && key === 'f') || (e.key === '/' && !isInputFocused)) {
+    // Ctrl+F or '/' (when not typing and no modal open) to focus search bar immediately
+    if (((e.ctrlKey || e.metaKey) && key === 'f') || (e.key === '/' && !isInputFocused && !isAnyModalOpen)) {
       e.preventDefault();
       const searchInput = getSearchInput();
       if (searchInput) {
@@ -69,8 +95,15 @@
       return;
     }
 
-    // Escape key handling: clear search input & blur or close modals
+    // Escape key handling: smart layered dismissal (pickers -> inputs -> task windows -> modals)
     if (e.key === 'Escape') {
+      // 1. If an open calendar picker or dropdown exists in DOM, dismiss it
+      const openPicker = document.querySelector('.calendar-2x-container, .dropdown-menu');
+      if (openPicker) {
+        document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      }
+
+      // 2. If an input is focused, clear search & blur
       if (isInputFocused) {
         if (activeEl && activeEl.classList.contains('search-input')) {
           activeEl.value = '';
@@ -79,12 +112,27 @@
         activeEl.blur();
         return;
       }
+
+      // 3. Topmost open task window or custom dialog close button
+      const activeWindowCloseBtn = document.querySelector('.btn-close-window, .btn-close-deploy, .close-modal-btn, .btn-deploy-cancel');
+      if (activeWindowCloseBtn) {
+        activeWindowCloseBtn.click();
+        return;
+      }
+
+      // 4. Store modals dismissal
+      if (store.isStrikeModalOpen) { store.isStrikeModalOpen = false; return; }
+      if (store.isTaskModalOpen) { store.isTaskModalOpen = false; return; }
+      if (store.isConfigModalOpen) { store.isConfigModalOpen = false; return; }
+      if (store.isTagManagerOpen) { store.isTagManagerOpen = false; return; }
+      if (store.isDebugModalOpen) { store.isDebugModalOpen = false; return; }
+      if (store.isHelpModalOpen) { store.isHelpModalOpen = false; return; }
     }
 
-    // Tab key handling: single key cycling between tabs when not typing
-    if (e.key === 'Tab' && !isInputFocused && !store.isTaskModalOpen && !store.isHelpModalOpen && !store.isDebugModalOpen && !store.isConfigModalOpen && !store.isTagManagerOpen) {
+    // Tab key handling: single key cycling between tabs only when not inside form elements and no modal is open
+    if (e.key === 'Tab' && !isInputFocused && !isAnyModalOpen) {
       e.preventDefault();
-      const tabs = ['EXECUTION', 'ARSENAL', 'BREACH', 'ARCHIVED'];
+      const tabs = ['EXECUTION', 'ARSENAL', 'BREACH', 'ARCHIVED', 'STRIKES'];
       const curIdx = tabs.indexOf(store.activeTab);
       let nextIdx;
       if (e.shiftKey) {
@@ -102,25 +150,39 @@
       return;
     }
 
-    // Ctrl+1..4 for Tab switching (1: Execution, 2: Arsenal, 3: Breach, 4: Archive)
+    // Ctrl+1..5 for Tab switching (1: Execution, 2: Arsenal, 3: Breach, 4: Archive, 5: Strikes)
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
       if (key === '1') { e.preventDefault(); store.activeTab = 'EXECUTION'; return; }
       if (key === '2') { e.preventDefault(); store.activeTab = 'ARSENAL'; return; }
       if (key === '3') { e.preventDefault(); store.activeTab = 'BREACH'; return; }
       if (key === '4') { e.preventDefault(); store.activeTab = 'ARCHIVED'; return; }
+      if (key === '5') { e.preventDefault(); store.activeTab = 'STRIKES'; return; }
     }
 
     // Ctrl+Shift+C to open Workspace & Database Configuration Popup
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'c') {
       e.preventDefault();
-      store.isConfigModalOpen = !store.isConfigModalOpen;
+      const wasOpen = store.isConfigModalOpen;
+      store.closeAllModals();
+      store.isConfigModalOpen = !wasOpen;
       return;
     }
 
     // Ctrl+Shift+T to open Tag Manager Popup Window
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 't') {
       e.preventDefault();
-      store.isTagManagerOpen = !store.isTagManagerOpen;
+      const wasOpen = store.isTagManagerOpen;
+      store.closeAllModals();
+      store.isTagManagerOpen = !wasOpen;
+      return;
+    }
+
+    // Ctrl+Shift+K to open Strike Directive Dispatch Creation Modal
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'k') {
+      e.preventDefault();
+      const wasOpen = store.isStrikeModalOpen;
+      store.closeAllModals();
+      store.isStrikeModalOpen = !wasOpen;
       return;
     }
 
@@ -134,7 +196,9 @@
     // Ctrl+Shift+E to toggle Tactical Debug Console
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'e') {
       e.preventDefault();
-      store.isDebugModalOpen = !store.isDebugModalOpen;
+      const wasOpen = store.isDebugModalOpen;
+      store.closeAllModals();
+      store.isDebugModalOpen = !wasOpen;
       return;
     }
 
@@ -145,15 +209,20 @@
       return;
     }
 
-    // Ctrl+N for Quick Task Creation
+    // Ctrl+N for Quick Context-Aware Creation
     if ((e.ctrlKey || e.metaKey) && key === 'n') {
       e.preventDefault();
-      store.isTaskModalOpen = true;
+      store.closeAllModals();
+      if (store.activeTab === 'STRIKES') {
+        store.isStrikeModalOpen = true;
+      } else {
+        store.isTaskModalOpen = true;
+      }
       return;
     }
 
     // High-Speed Card Navigation & Actions (when not typing in an input and no modal open)
-    if (!isInputFocused && !store.isTaskModalOpen && !store.isHelpModalOpen && !store.isDebugModalOpen) {
+    if (!isInputFocused && !isAnyModalOpen && store.activeTab !== 'STRIKES') {
       const focusedCard = document.querySelector('.task-card-nav-focused');
 
       // 'J' or Down Arrow -> Next Card
@@ -234,12 +303,15 @@
       }
     }
 
-    // Ctrl+Enter or Ctrl+S -> Confirm / Save inside any active modal or dialog
+    // Ctrl+Enter or Ctrl+S -> Confirm / Save inside the active modal or dialog (#9)
     if ((e.ctrlKey || e.metaKey) && (e.key === 'Enter' || key === 's')) {
-      const confirmBtn = document.querySelector('.btn-dispatch, .btn-deploy-confirm, .btn-reschedule-confirm, .btn-confirm-purge, .btn-archive-confirm');
-      if (confirmBtn && !confirmBtn.disabled) {
+      const activeModal = document.querySelector('.dialog-overlay, .modal-overlay, .modal-backdrop, .task-window-overlay, .strike-modal-backdrop, .custom-modal-backdrop');
+      const root = activeModal || document;
+      const confirmBtns = Array.from(root.querySelectorAll('.btn-save, .btn-dispatch, .btn-deploy-confirm, .btn-reschedule-confirm, .btn-confirm-reschedule, .btn-confirm-purge, .btn-archive-confirm'));
+      const visibleBtn = confirmBtns.find(b => !b.disabled && b.offsetParent !== null);
+      if (visibleBtn) {
         e.preventDefault();
-        confirmBtn.click();
+        visibleBtn.click();
         return;
       }
     }
@@ -254,12 +326,10 @@
   }
 
   function navigateTaskCards(direction) {
-    // Re-query cards only when tab changes
-    if (_cachedCards === null || _cachedCardsActiveTab !== store.activeTab) {
-      _cachedCards = Array.from(document.querySelectorAll('.task-card'));
-      _cachedCardsActiveTab = store.activeTab;
-    }
-    const cards = _cachedCards;
+    const activePane = document.querySelector('.content-area > .tab-pane:not(.hidden)');
+    if (!activePane) return;
+
+    const cards = Array.from(activePane.querySelectorAll('.task-card, .grid-strike-card, .compact-three-day-card, .strike-card'));
     if (!cards || cards.length === 0) return;
 
     let currentIdx = cards.findIndex(c => c.classList.contains('task-card-nav-focused'));
@@ -315,6 +385,11 @@
           <Archive />
         </div>
       {/if}
+      {#if store.activeTab === 'STRIKES'}
+        <div class="tab-pane">
+          <Strikes />
+        </div>
+      {/if}
     </div>
   {/if}
 </main>
@@ -348,8 +423,8 @@
   }
 
   :global(.task-card-nav-focused) {
-    border-color: rgba(168, 85, 247, 0.85) !important;
-    box-shadow: 0 0 24px rgba(168, 85, 247, 0.5) !important;
+    border-color: rgba(245, 158, 11, 0.9) !important;
+    box-shadow: 0 0 25px rgba(245, 158, 11, 0.45), inset 0 0 10px rgba(245, 158, 11, 0.15) !important;
     transform: translateY(-2px);
   }
 </style>

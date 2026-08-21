@@ -21,19 +21,25 @@
   let tagDropdownOpen = $state(false);
   let sortDropdownOpen = $state(false);
 
+  // Reset filters when navigating away from Arsenal so returning always shows clean state
+  $effect(() => {
+    if (store.activeTab !== 'ARSENAL') {
+      searchQuery = ''; _searchRaw = ''; selectedTagNames = []; filterPriority = 'ALL';
+      tagDropdownOpen = false; sortDropdownOpen = false;
+    }
+  });
+
   // ── Selected task for detail view & editing ──
   let selectedTask = $state(null);
   let selectedSide = $state('right'); // 'left' | 'right'
   let editingTask  = $state(null); // Task object being edited in modal window
 
-  // ── 60-Second Purge Modal state (Raw Intel Cards Only) ──
+  // ── Type-to-Confirm Purge Modal state (Raw Intel Cards Only) ──
   let isPurgeModalOpen = $state(false);
   let purgingTask = $state(null);
-  let purgeTimerSeconds = $state(60);
-  let purgeTimerInterval = null;
+  let purgeConfirmInput = $state('');
 
   onDestroy(() => {
-    if (purgeTimerInterval) clearInterval(purgeTimerInterval);
     if (_searchTimer) clearTimeout(_searchTimer);
   });
 
@@ -41,28 +47,26 @@
     if (event) { event.stopPropagation(); }
     purgingTask = task;
     isPurgeModalOpen = true;
-    purgeTimerSeconds = 60;
-    if (purgeTimerInterval) clearInterval(purgeTimerInterval);
-    purgeTimerInterval = setInterval(() => {
-      if (purgeTimerSeconds > 0) {
-        purgeTimerSeconds -= 1;
-      } else {
-        clearInterval(purgeTimerInterval);
-      }
-    }, 1000);
+    purgeConfirmInput = '';
   }
 
   function closePurgeModal() {
     isPurgeModalOpen = false;
     purgingTask = null;
-    if (purgeTimerInterval) clearInterval(purgeTimerInterval);
+    purgeConfirmInput = '';
   }
 
   async function confirmPermanentPurge() {
     if (!purgingTask || !purgingTask.id) return;
+    const taskExists = store.tasks && store.tasks.some(t => t.id === purgingTask.id);
+    if (!taskExists) {
+      store.showToast('Tactical Alert: Task no longer exists.', 'warning');
+      closePurgeModal();
+      return;
+    }
     const idToPurge = purgingTask.id;
     try {
-      const success = await store.deleteTask(idToPurge);
+      await store.deleteTask(idToPurge);
       closePurgeModal();
     } catch (err) {
       console.error('Purge error:', err);
@@ -80,20 +84,29 @@
     }
   }
 
-  // Action to smoothly scroll highlighted element into view
+  // Action to smoothly scroll highlighted element into view with timer cleanup
   function scrollIfHighlighted(node, isHighlighted) {
+    let timer = null;
     if (isHighlighted) {
-      setTimeout(() => {
-        node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      timer = setTimeout(() => {
+        if (node && node.isConnected) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
       }, 60);
     }
     return {
       update(nextState) {
+        if (timer) clearTimeout(timer);
         if (nextState) {
-          setTimeout(() => {
-            node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          timer = setTimeout(() => {
+            if (node && node.isConnected) {
+              node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
           }, 60);
         }
+      },
+      destroy() {
+        if (timer) clearTimeout(timer);
       }
     };
   }
@@ -110,7 +123,11 @@
   const allTags = $derived.by(() => {
     const s = new Set();
     store.arsenalTasks.forEach(t => {
-      if (t.tags) t.tags.forEach(tag => s.add(tag.tag_name.toUpperCase()));
+      if (t.tags && Array.isArray(t.tags)) {
+        t.tags.forEach(tag => {
+          if (tag && tag.tag_name) s.add(tag.tag_name.toUpperCase());
+        });
+      }
     });
     return Array.from(s).sort();
   });
@@ -131,31 +148,41 @@
     // Search query filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      tasks = tasks.filter(t => t.title.toLowerCase().includes(q));
+      tasks = tasks.filter(t => t.title && t.title.toLowerCase().includes(q));
     }
 
     // Multi-select tags filter
     if (selectedTagNames.length > 0) {
       tasks = tasks.filter(t => 
-        t.tags && t.tags.some(tag => selectedTagNames.includes(tag.tag_name.toUpperCase()))
+        t.tags && t.tags.some(tag => tag && tag.tag_name && selectedTagNames.includes(tag.tag_name.toUpperCase()))
       );
     }
 
     // Sorting
     return [...tasks].sort((a, b) => {
       if (sortBy === 'name') {
-        return sortDir === 'asc' ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title);
+        const aTitle = (a.title || '');
+        const bTitle = (b.title || '');
+        return sortDir === 'asc' ? aTitle.localeCompare(bTitle) : bTitle.localeCompare(aTitle);
       }
       return sortDir === 'desc' ? Number(b.id) - Number(a.id) : Number(a.id) - Number(b.id);
     });
   });
 
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   // Compile once per search query change, not per card render
-  const _searchRegex = $derived(
-    searchQuery.trim()
-      ? new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')})`, 'gi')
-      : null
-  );
+  const _searchRegex = $derived.by(() => {
+    const q = searchQuery.trim();
+    if (!q) return null;
+    try {
+      return new RegExp(`(${escapeRegExp(q)})`, 'gi');
+    } catch (e) {
+      return null;
+    }
+  });
 
   const rawIntelTasks     = $derived(filteredTasks.filter(t => t.stage === 'RawIntel'));
   const strategizingTasks = $derived(filteredTasks.filter(t => t.stage === 'Strategizing'));
@@ -189,39 +216,43 @@
 
   // Stage transition helpers
   async function moveToStrategizing(task, e) {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     try {
-      const res = await window.electronAPI.updateTask({
-        id: task.id, title: task.title, priority: task.priority === 'Critical' ? 'High' : task.priority,
-        stage: 'Strategizing', tags: task.tags ? task.tags.map(t => t.tag_name) : []
+      const res = await store.updateTask({
+        id: task.id, 
+        title: task.title, 
+        priority: task.priority === 'Critical' ? 'High' : task.priority,
+        stage: 'Strategizing', 
+        tags: task.tags ? task.tags.map(t => t.tag_name) : []
       });
-      if (res.success) { 
+      if (res && res.success) { 
         store.showToast('Moved to Strategizing.', 'info'); 
-        store.setHighlightedTaskId(task.id);
-        // Update task in-place — no full reload needed
-        const idx = store.tasks.findIndex(t => t.id === task.id);
-        if (idx !== -1) store.tasks[idx] = res.task;
+      } else {
+        store.showToast('Failed: ' + (res?.error || 'Unknown error'), 'danger');
       }
-      else store.showToast('Failed: ' + res.error, 'danger');
-    } catch(e) { store.logError(e.message, 'High'); }
+    } catch(err) { 
+      store.logError(err.message, 'High'); 
+    }
   }
 
   async function moveToRawIntel(task, e) {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     try {
-      const res = await window.electronAPI.updateTask({
-        id: task.id, title: task.title, priority: task.priority === 'Critical' ? 'High' : task.priority,
-        stage: 'RawIntel', tags: task.tags ? task.tags.map(t => t.tag_name) : []
+      const res = await store.updateTask({
+        id: task.id, 
+        title: task.title, 
+        priority: task.priority === 'Critical' ? 'High' : task.priority,
+        stage: 'RawIntel', 
+        tags: task.tags ? task.tags.map(t => t.tag_name) : []
       });
-      if (res.success) { 
+      if (res && res.success) { 
         store.showToast('Moved back to Raw Intel.', 'info'); 
-        store.setHighlightedTaskId(task.id);
-        // Update task in-place — no full reload needed
-        const idx = store.tasks.findIndex(t => t.id === task.id);
-        if (idx !== -1) store.tasks[idx] = res.task;
+      } else {
+        store.showToast('Failed: ' + (res?.error || 'Unknown error'), 'danger');
       }
-      else store.showToast('Failed: ' + res.error, 'danger');
-    } catch(e) { store.logError(e.message, 'High'); }
+    } catch(err) { 
+      store.logError(err.message, 'High'); 
+    }
   }
 
   async function handleDuplicateTask(task, e) {
@@ -240,26 +271,27 @@
 
   function closeDetail() {
     selectedTask = null;
-    store.loadAllData();
   }
 
   function openTaskCreation() {
     store.isTaskModalOpen = true;
   }
 
-  // Helper function for title search highlighting
-  function getTitleParts(title, query) {
+  // Helper function for title search highlighting without allocating RegExp objects
+  function getTitleParts(title) {
+    if (!title) return [{ text: '', highlight: false }];
     if (!_searchRegex) return [{ text: title, highlight: false }];
-    const regex = new RegExp(_searchRegex.source, _searchRegex.flags); // clone to reset lastIndex
+    _searchRegex.lastIndex = 0;
     const parts = [];
     let lastIdx = 0;
     let match;
-    while ((match = regex.exec(title)) !== null) {
+    while ((match = _searchRegex.exec(title)) !== null) {
       if (match.index > lastIdx) {
         parts.push({ text: title.substring(lastIdx, match.index), highlight: false });
       }
       parts.push({ text: match[0], highlight: true });
-      lastIdx = regex.lastIndex;
+      lastIdx = _searchRegex.lastIndex;
+      if (!match[0].length) { _searchRegex.lastIndex++; }
     }
     if (lastIdx < title.length) {
       parts.push({ text: title.substring(lastIdx), highlight: false });
@@ -308,6 +340,17 @@
         bind:value={_searchRaw}
         oninput={(e) => handleSearchInput(e.target.value)}
       />
+      {#if _searchRaw || searchQuery || filterPriority !== 'ALL' || selectedTagNames.length > 0}
+        <button 
+          type="button" 
+          class="btn-search-clear" 
+          onclick={() => { _searchRaw = ''; searchQuery = ''; filterPriority = 'ALL'; selectedTagNames = []; }}
+          title="Clear search & filters"
+          aria-label="Clear search and filters"
+        >
+          <X size={13} />
+        </button>
+      {/if}
     </div>
 
     <!-- Tags Multi-Select Checkbox Dropdown -->
@@ -415,15 +458,44 @@
               use:scrollIfHighlighted={store.highlightedTaskId === task.id}
               onclick={() => editingTask = task}
             >
-              <span class="priority-bar {task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}"></span>
+              <span class="priority-bar {(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}"></span>
               
-              <div class="card-content">
-                <!-- Creation Time ONLY ABOVE Title -->
-                <div class="card-header-row">
-                  <span class="meta-date"><Calendar size={11} /> ORIGIN DATE: {task.origin_date}</span>
+              <div class="card-main-flow">
+                <!-- Top Header: Origin Date on left, Sleek Action Icons & Priority Badge on far right -->
+                <div class="card-header-top">
+                  <span class="meta-date"><Calendar size={12} /> ORIGIN: {task.origin_date}</span>
+                  
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="header-actions-strip" onclick={(e) => e.stopPropagation()}>
+                    <!-- PURGE ICON BUTTON -->
+                    <button 
+                      type="button"
+                      class="icon-btn purge" 
+                      onclick={(e) => openPurgeModal(task, e)} 
+                      title="Permanently Purge Raw Intel Campaign"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+
+                    <!-- STRATEGIZE ICON BUTTON -->
+                    <button 
+                      type="button"
+                      class="icon-btn strategize" 
+                      onclick={(e) => moveToStrategizing(task, e)} 
+                      title="Move to Strategizing"
+                    >
+                      <Network size={14} strokeWidth={2.4} />
+                    </button>
+
+                    <!-- PRIORITY PILL ON FAR RIGHT -->
+                    <span class="badge-tactical badge-{(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}">
+                      {task.priority === 'Critical' ? 'High' : (task.priority || 'Medium').toUpperCase()}
+                    </span>
+                  </div>
                 </div>
 
-                <!-- Title with Search Highlight (Double click to open .md file) -->
+                <!-- Campaign Title: 100% Full Width, Generous Line Height -->
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <h3 
@@ -431,7 +503,7 @@
                   ondblclick={(e) => { e.stopPropagation(); store.openStrategiesFile(task); }}
                   title="Double-click to open Markdown strategy note (.md)"
                 >
-                  {#each getTitleParts(task.title, searchQuery) as part}
+                  {#each getTitleParts(task.title) as part}
                     {#if part.highlight}
                       <mark class="search-highlight">{part.text}</mark>
                     {:else}
@@ -440,49 +512,25 @@
                   {/each}
                 </h3>
 
-                <!-- Tags (All visible with dynamic line wrapping) -->
+                <!-- Tags: Fluid Dynamic Wrap across Multiple Rows with Zero Clipping -->
                 {#if task.tags && task.tags.length > 0}
                   <div class="tags-row">
                     {#each task.tags as tag}
-                      <!-- svelte-ignore a11y_click_events_have_key_events -->
-                      <!-- svelte-ignore a11y_no_static_element_interactions -->
-                      <span 
-                        class="tag clickable" 
-                        class:active={selectedTagNames.includes(tag.tag_name.toUpperCase())}
-                        onclick={(e) => filterByTag(tag.tag_name, e)}
-                        title="Filter by tag: {tag.tag_name}"
-                      >
-                        <TagIcon size={10} /> {tag.tag_name}
-                      </span>
+                      {#if tag && tag.tag_name}
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <span 
+                          class="tag clickable" 
+                          class:active={selectedTagNames.includes(tag.tag_name.toUpperCase())}
+                          onclick={(e) => filterByTag(tag.tag_name, e)}
+                          title="Filter by tag: {tag.tag_name}"
+                        >
+                          <TagIcon size={11} /> {tag.tag_name}
+                        </span>
+                      {/if}
                     {/each}
                   </div>
                 {/if}
-              </div>
-
-              <!-- PRIORITY STATUS, PURGE BUTTON & MOVE BUTTON ON EXACT SAME HORIZONTAL ROW -->
-              <div class="card-actions" onclick={(e) => e.stopPropagation()}>
-                <span class="badge-tactical badge-{task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}">
-                  {task.priority === 'Critical' ? 'High' : task.priority.toUpperCase()}
-                </span>
-
-                <!-- PURGE BUTTON (RAW INTEL STAGE ONLY) -->
-                <button 
-                  type="button"
-                  class="action-btn-purge" 
-                  onclick={(e) => openPurgeModal(task, e)} 
-                  title="Permanently Purge Raw Intel Campaign"
-                >
-                  <Trash2 size={12} />
-                  <span>PURGE</span>
-                </button>
-
-                <button 
-                  class="action-btn strategize" 
-                  onclick={(e) => moveToStrategizing(task, e)} 
-                  title="Move to Strategizing"
-                >
-                  <Network size={14} strokeWidth={2.5} />
-                </button>
               </div>
             </div>
           {/each}
@@ -519,15 +567,44 @@
               use:scrollIfHighlighted={store.highlightedTaskId === task.id}
               onclick={() => openDetail(task, 'right')}
             >
-              <span class="priority-bar {task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}"></span>
+              <span class="priority-bar {(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}"></span>
               
-              <div class="card-content">
-                <!-- Creation Time ONLY ABOVE Title -->
-                <div class="card-header-row">
-                  <span class="meta-date"><Calendar size={11} /> ORIGIN DATE: {task.origin_date}</span>
+              <div class="card-main-flow">
+                <!-- Top Header: Origin Date on left, Action Icons & Priority Badge on far right -->
+                <div class="card-header-top">
+                  <span class="meta-date"><Calendar size={12} /> ORIGIN: {task.origin_date}</span>
+                  
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="header-actions-strip" onclick={(e) => e.stopPropagation()}>
+                    <!-- DUPLICATE ICON BUTTON -->
+                    <button 
+                      type="button"
+                      class="icon-btn duplicate" 
+                      onclick={(e) => handleDuplicateTask(task, e)} 
+                      title="Duplicate Campaign"
+                    >
+                      <Copy size={13} />
+                    </button>
+
+                    <!-- RAW INTEL BACK ICON BUTTON -->
+                    <button 
+                      type="button"
+                      class="icon-btn back" 
+                      onclick={(e) => moveToRawIntel(task, e)} 
+                      title="Move back to Raw Intel"
+                    >
+                      <Brain size={14} strokeWidth={2.4} />
+                    </button>
+
+                    <!-- PRIORITY PILL ON FAR RIGHT -->
+                    <span class="badge-tactical badge-{(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}">
+                      {task.priority === 'Critical' ? 'High' : (task.priority || 'Medium').toUpperCase()}
+                    </span>
+                  </div>
                 </div>
 
-                <!-- Title with Search Highlight (Double click to open .md file) -->
+                <!-- Campaign Title: 100% Full Width, Generous Line Height -->
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <h3 
@@ -535,7 +612,7 @@
                   ondblclick={(e) => { e.stopPropagation(); store.openStrategiesFile(task); }}
                   title="Double-click to open Markdown strategy note (.md)"
                 >
-                  {#each getTitleParts(task.title, searchQuery) as part}
+                  {#each getTitleParts(task.title) as part}
                     {#if part.highlight}
                       <mark class="search-highlight">{part.text}</mark>
                     {:else}
@@ -544,47 +621,25 @@
                   {/each}
                 </h3>
 
-                <!-- Tags (All visible with dynamic line wrapping) -->
+                <!-- Tags: Fluid Dynamic Wrap across Multiple Rows with Zero Clipping -->
                 {#if task.tags && task.tags.length > 0}
                   <div class="tags-row">
                     {#each task.tags as tag}
-                      <!-- svelte-ignore a11y_click_events_have_key_events -->
-                      <!-- svelte-ignore a11y_no_static_element_interactions -->
-                      <span 
-                        class="tag strat clickable" 
-                        class:active={selectedTagNames.includes(tag.tag_name.toUpperCase())}
-                        onclick={(e) => filterByTag(tag.tag_name, e)}
-                        title="Filter by tag: {tag.tag_name}"
-                      >
-                        <TagIcon size={10} /> {tag.tag_name}
-                      </span>
+                      {#if tag && tag.tag_name}
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <span 
+                          class="tag strat clickable" 
+                          class:active={selectedTagNames.includes(tag.tag_name.toUpperCase())}
+                          onclick={(e) => filterByTag(tag.tag_name, e)}
+                          title="Filter by tag: {tag.tag_name}"
+                        >
+                          <TagIcon size={11} /> {tag.tag_name}
+                        </span>
+                      {/if}
                     {/each}
                   </div>
                 {/if}
-              </div>
-
-              <!-- PRIORITY STATUS BUTTON & MOVE BUTTON ON EXACT SAME HORIZONTAL ROW -->
-              <div class="card-actions" onclick={(e) => e.stopPropagation()}>
-                <span class="badge-tactical badge-{task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}">
-                  {task.priority === 'Critical' ? 'High' : task.priority.toUpperCase()}
-                </span>
-                <!-- DUPLICATE BUTTON -->
-                <button 
-                  type="button"
-                  class="action-btn duplicate" 
-                  onclick={(e) => handleDuplicateTask(task, e)} 
-                  title="Duplicate Campaign"
-                >
-                  <Copy size={12} />
-                </button>
-
-                <button 
-                  class="action-btn back" 
-                  onclick={(e) => moveToRawIntel(task, e)} 
-                  title="Move back to Raw Intel"
-                >
-                  <Brain size={14} strokeWidth={2.5} />
-                </button>
               </div>
             </div>
           {/each}
@@ -609,11 +664,11 @@
   <ArsenalTaskEdit task={editingTask} onClose={() => editingTask = null} />
 {/if}
 
-<!-- 60-SECOND PURGE CONFIRMATION MODAL FOR RAW INTEL CARDS -->
+<!-- TYPE-TO-CONFIRM PURGE MODAL FOR RAW INTEL CARDS -->
 {#if isPurgeModalOpen && purgingTask}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="purge-modal-overlay" onclick={closePurgeModal}>
+  <div class="purge-modal-overlay">
     <div class="purge-modal-card" onclick={(e) => e.stopPropagation()}>
       <div class="purge-header">
         <div class="purge-title-wrap">
@@ -633,6 +688,23 @@
           <AlertTriangle size={20} class="warning-icon" />
           <p>This action will <strong>permanently purge</strong> the Raw Intel campaign <em>"{purgingTask.title}"</em> from your SQLite database and strategy file. It will <strong>NOT</strong> be archived.</p>
         </div>
+        <div class="purge-type-confirm">
+          <label for="purge-confirm-input" class="purge-confirm-label">Type <strong>"{purgingTask.title}"</strong> to confirm permanent purge:</label>
+          <input
+            id="purge-confirm-input"
+            type="text"
+            class="purge-confirm-input"
+            bind:value={purgeConfirmInput}
+            placeholder="Type exact task title here…"
+            spellcheck="false"
+            autocomplete="off"
+            onpaste={(e) => { e.preventDefault(); store.showToast('Paste disabled. Type title manually.', 'warning'); }}
+            oncopy={(e) => e.preventDefault()}
+            oncut={(e) => e.preventDefault()}
+            ondrop={(e) => e.preventDefault()}
+            oncontextmenu={(e) => e.preventDefault()}
+          />
+        </div>
       </div>
 
       <div class="purge-footer">
@@ -640,15 +712,11 @@
         <button 
           type="button" 
           class="btn-confirm-purge" 
-          disabled={purgeTimerSeconds > 0} 
+          disabled={purgeConfirmInput.trim() !== purgingTask.title.trim()} 
           onclick={confirmPermanentPurge}
         >
           <Trash2 size={16} />
-          {#if purgeTimerSeconds > 0}
-            <span>PURGE LOCKED ({purgeTimerSeconds}s)</span>
-          {:else}
-            <span>CONFIRM PERMANENT PURGE</span>
-          {/if}
+          <span>CONFIRM PERMANENT PURGE</span>
         </button>
       </div>
     </div>
@@ -674,8 +742,8 @@
     gap: 12px;
     padding: 14px 20px;
     background: rgba(10, 15, 26, 0.92);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     border-bottom: 1px solid rgba(255,255,255,0.08);
     flex-shrink: 0;
     width: 100%;
@@ -812,7 +880,7 @@
     position: absolute; top: calc(100% + 8px); right: 0; z-index: 99999;
     min-width: 180px; max-height: 260px; overflow-y: auto;
     background: rgba(12, 17, 30, 0.98);
-    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(139, 92, 246, 0.35);
     border-radius: var(--radius-md);
     box-shadow: 0 16px 40px rgba(0,0,0,0.85);
@@ -847,6 +915,31 @@
     transition: all 0.15s ease; cursor: pointer; flex-shrink: 0;
   }
   .sort-dir-btn:hover { background: rgba(139,92,246,0.20); border-color: rgba(139,92,246,0.40); color: #ddd6fe; }
+
+  .btn-search-clear {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 0;
+  }
+  .btn-search-clear:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.60);
+    color: #fee2e2;
+    transform: translateY(-50%) scale(1.1);
+  }
 
   /* ── PANELS ── */
   .panels {
@@ -899,34 +992,37 @@
     flex-shrink: 0;
   }
 
+  /* ── AUTO-EXPANDING DYNAMIC TASK CARDS (NATURAL FLOW & ZERO CUTOFF) ── */
   .panel-body {
-    flex: 1; overflow-y: auto;
-    padding: 16px;
-    display: flex; flex-direction: column; gap: 10px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
   }
 
-  /* ── TASK CARDS (one per row, auto adjustable height) ── */
   .task-card {
     display: flex;
-    align-items: center;
-    min-height: 100px;
+    flex-direction: row;
+    align-items: stretch;
+    flex-shrink: 0;
     height: auto;
-    background: rgba(14, 20, 33, 0.75);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 22px;
+    min-height: 110px;
+    background: rgba(10, 16, 30, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
     overflow: hidden;
     cursor: pointer;
-    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.15s ease, background 0.15s ease;
     width: 100%;
     box-sizing: border-box;
   }
   .task-card:hover {
-    border-color: rgba(139,92,246,0.45);
-    background: rgba(24, 30, 52, 0.88);
+    border-color: rgba(139, 92, 246, 0.55);
+    background: rgba(22, 28, 48, 0.98);
     transform: translateY(-2px);
-    box-shadow: 0 8px 28px rgba(0,0,0,0.45), 0 0 20px rgba(139,92,246,0.18);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.55), 0 0 28px rgba(139, 92, 246, 0.22);
   }
   .task-card.just-updated {
     animation: highlightCardPulse 2.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -940,31 +1036,116 @@
   }
 
   .strategizing-card:hover {
-    border-color: rgba(59,130,246,0.45);
-    box-shadow: 0 8px 28px rgba(0,0,0,0.45), 0 0 20px rgba(59,130,246,0.18);
+    border-color: rgba(59, 130, 246, 0.55);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.55), 0 0 28px rgba(59, 130, 246, 0.22);
   }
 
-  /* Left priority bar vertically centered / stretched */
-  .priority-bar { width: 4px; flex-shrink: 0; display: block; align-self: stretch; }
+  .priority-bar { width: 5px; flex-shrink: 0; display: block; align-self: stretch; }
   .priority-bar.high   { background: linear-gradient(180deg, #ef4444, #dc2626); }
   .priority-bar.medium { background: linear-gradient(180deg, #f59e0b, #d97706); }
   .priority-bar.low    { background: linear-gradient(180deg, #3b82f6, #2563eb); }
 
-  .card-content {
-    flex: 1; padding: 16px 20px;
-    display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  .card-main-flow {
+    flex: 1 1 auto;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    height: auto;
+    box-sizing: border-box;
   }
 
-  /* Date Header */
-  .card-header-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  .card-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
   }
-  .meta-date { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: #c4b5fd; }
+  .meta-date { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: #c4b5fd; letter-spacing: 0.02em; flex-shrink: 0; }
+
+  .header-actions-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-muted);
+  }
+  .icon-btn:hover {
+    transform: scale(1.12);
+  }
+  .icon-btn.strategize {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.40);
+    color: #93c5fd;
+  }
+  .icon-btn.strategize:hover {
+    background: rgba(59, 130, 246, 0.35);
+    border-color: rgba(59, 130, 246, 0.75);
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(59, 130, 246, 0.45);
+  }
+  .icon-btn.back {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.40);
+    color: #c4b5fd;
+  }
+  .icon-btn.back:hover {
+    background: rgba(139, 92, 246, 0.35);
+    border-color: rgba(139, 92, 246, 0.75);
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(139, 92, 246, 0.45);
+  }
+  .icon-btn.duplicate {
+    background: rgba(6, 182, 212, 0.15);
+    border-color: rgba(6, 182, 212, 0.40);
+    color: #67e8f9;
+  }
+  .icon-btn.duplicate:hover {
+    background: rgba(6, 182, 212, 0.35);
+    border-color: rgba(6, 182, 212, 0.75);
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(6, 182, 212, 0.50);
+  }
+  .icon-btn.purge {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.40);
+    color: #fca5a5;
+  }
+  .icon-btn.purge:hover {
+    background: rgba(239, 68, 68, 0.35);
+    border-color: rgba(239, 68, 68, 0.75);
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.45);
+  }
 
   .card-title {
-    font-size: 15px; font-weight: 900; line-height: 1.38;
-    color: #f3e8ff; letter-spacing: 0.02em; word-spacing: 0.04em;
-    word-break: break-word; white-space: normal; margin: 0;
+    font-size: 16.5px;
+    font-weight: 800;
+    line-height: 1.65;
+    color: #f8fafc;
+    letter-spacing: 0.015em;
+    word-spacing: 0.04em;
+    word-break: break-word;
+    white-space: normal;
+    margin: 2px 0;
+    flex-shrink: 0;
   }
 
   :global(.search-highlight) {
@@ -974,115 +1155,69 @@
     border-radius: 2px;
   }
 
-  .tags-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; max-height: 44px; overflow: hidden; }
+  .tags-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
   .tag {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 10px; font-weight: 800; letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
     color: var(--text-muted);
-    background: rgba(139,92,246,0.10); padding: 3px 9px;
-    border-radius: 99px; border: 1px solid rgba(139,92,246,0.18);
+    background: rgba(139, 92, 246, 0.12);
+    padding: 3px 10px;
+    border-radius: 99px;
+    border: 1px solid rgba(139, 92, 246, 0.22);
     transition: all 0.15s ease;
+    flex-shrink: 0;
   }
   .tag.clickable { cursor: pointer; }
   .tag.clickable:hover {
-    background: rgba(139,92,246,0.25);
-    border-color: rgba(139,92,246,0.50);
+    background: rgba(139, 92, 246, 0.25);
+    border-color: rgba(139, 92, 246, 0.50);
     color: #ddd6fe;
     transform: translateY(-1px);
   }
   .tag.clickable.active {
-    background: rgba(139,92,246,0.40);
-    border-color: rgba(139,92,246,0.80);
+    background: rgba(139, 92, 246, 0.40);
+    border-color: rgba(139, 92, 246, 0.80);
     color: #ffffff;
-    box-shadow: 0 0 10px rgba(139,92,246,0.35);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.35);
   }
   .tag.strat {
-    background: rgba(59,130,246,0.10); border-color: rgba(59,130,246,0.18);
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.22);
+    color: #93c5fd;
   }
   .tag.strat.clickable:hover {
-    background: rgba(59,130,246,0.25);
-    border-color: rgba(59,130,246,0.50);
+    background: rgba(59, 130, 246, 0.25);
+    border-color: rgba(59, 130, 246, 0.50);
     color: #bfdbfe;
   }
   .tag.strat.clickable.active {
-    background: rgba(59,130,246,0.40);
-    border-color: rgba(59,130,246,0.80);
+    background: rgba(59, 130, 246, 0.40);
+    border-color: rgba(59, 130, 246, 0.80);
     color: #ffffff;
-    box-shadow: 0 0 10px rgba(59,130,246,0.35);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
   }
 
-  /* PRIORITY STATUS BUTTON & MOVE BUTTON ON EXACT SAME HORIZONTAL ROW / LEVEL */
-  .card-actions {
-    display: flex; 
-    align-items: center; 
-    justify-content: flex-end;
-    gap: 12px;
-    align-self: center;
-    padding: 12px 18px;
-    border-left: 1px solid rgba(255,255,255,0.06);
-    flex-shrink: 0;
-  }
-  .action-btn {
-    width: 32px; height: 32px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    border: 1px solid transparent;
-    transition: all 0.15s ease;
-    cursor: pointer;
-  }
-  .action-btn:hover { transform: scale(1.12); }
-  .action-btn.strategize {
-    background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.25); color: #60a5fa;
-  }
-  .action-btn.strategize:hover {
-    background: rgba(59,130,246,0.30); border-color: rgba(59,130,246,0.60); color: #bfdbfe;
-    box-shadow: 0 0 14px rgba(59,130,246,0.35);
-  }
-  .action-btn.back {
-    background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.25); color: #c4b5fd;
-  }
-  .action-btn.back:hover {
-    background: rgba(139,92,246,0.30); border-color: rgba(139,92,246,0.60); color: #ddd6fe;
-    box-shadow: 0 0 14px rgba(139,92,246,0.35);
-  }
-  .action-btn.duplicate {
-    background: rgba(6,182,212,0.14); border-color: rgba(6,182,212,0.30); color: #67e8f9;
-  }
-  .action-btn.duplicate:hover {
-    background: rgba(6,182,212,0.32); border-color: rgba(6,182,212,0.65); color: #a5f3fc;
-    box-shadow: 0 0 16px rgba(6,182,212,0.40);
-  }
-
-  /* PURGE BUTTON ON RAW INTEL TASK CARD (BETWEEN PRIORITY PILL & MOVE BUTTON) */
-  .action-btn-purge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 6px 12px;
-    font-size: 10.5px;
-    font-weight: 900;
-    letter-spacing: 0.05em;
-    color: #fca5a5;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.38);
-    border-radius: 9999px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .action-btn-purge:hover {
-    background: rgba(239, 68, 68, 0.32);
-    border-color: rgba(239, 68, 68, 0.70);
-    box-shadow: 0 0 14px rgba(239, 68, 68, 0.35);
-    color: #ffffff;
-    transform: translateY(-1px);
-  }
-
-  /* 60s PURGE MODAL OVERLAY IN ARSENAL */
+  /* TYPE-TO-CONFIRM PURGE MODAL OVERLAY IN ARSENAL */
   .purge-modal-overlay {
     position: fixed;
-    inset: 0;
-    z-index: 50000;
+    top: 64px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 8000;
     background: rgba(4, 7, 14, 0.92);
-    backdrop-filter: blur(24px);
+    backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1112,6 +1247,37 @@
   .purge-body { display: flex; flex-direction: column; gap: 14px; }
   .purge-warning-box { display: flex; gap: 12px; padding: 14px 16px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 14px; color: #fca5a5; font-size: 12px; line-height: 1.5; }
   :global(.warning-icon) { flex-shrink: 0; color: #f87171; }
+  .purge-type-confirm {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .purge-confirm-label {
+    font-size: 12.5px;
+    color: #94a3b8;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .purge-confirm-label strong {
+    color: #fca5a5;
+  }
+  .purge-confirm-input {
+    width: 100%;
+    background: rgba(239, 68, 68, 0.06);
+    border: 1.5px solid rgba(239, 68, 68, 0.3);
+    border-radius: 9999px;
+    padding: 10px 18px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #fca5a5;
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+  .purge-confirm-input:focus {
+    border-color: rgba(239, 68, 68, 0.7);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+  }
 
   .purge-footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
   .btn-cancel-purge { padding: 10px 20px; font-size: 11.5px; font-weight: 900; color: var(--text-muted); background: transparent; border: none; cursor: pointer; }

@@ -34,18 +34,18 @@
   ];
   const dayNames = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
-  // Compute days matrix for viewMonth / viewYear
+  // Compute days matrix for viewMonth / viewYear — guarantee exactly 35 cells (5 rows x 7 cols)
   const calendarDays = $derived.by(() => {
     const firstDay = new Date(viewYear, viewMonth, 1);
     const lastDay = new Date(viewYear, viewMonth + 1, 0);
-    const startDayOfWeek = firstDay.getDay(); // 0 = Sun
+    const startDayOfWeek = firstDay.getDay(); // 0 = Sun, 6 = Sat
     const totalDays = lastDay.getDate();
 
     const days = [];
 
     // Empty lead cells from previous month
     for (let i = 0; i < startDayOfWeek; i++) {
-      days.push({ dayNum: null, dateStr: '', isDisabled: true });
+      days.push({ dayNum: null, dateStr: '', isDisabled: true, dayOfWeek: i });
     }
 
     // Days of current month
@@ -60,6 +60,7 @@
       const mm = String(viewMonth + 1).padStart(2, '0');
       const yyyy = viewYear;
       const formatted = `${dd}-${mm}-${yyyy}`;
+      const dayOfWeek = dateObj.getDay();
 
       const isDisabled = dateObj.getTime() < minDateObj.getTime();
       const isToday = dateObj.getTime() === todayZero.getTime();
@@ -70,7 +71,10 @@
         dateStr: formatted,
         isDisabled,
         isToday,
-        isSelected
+        isSelected,
+        dayOfWeek,
+        isSunday: dayOfWeek === 0,
+        isSaturday: dayOfWeek === 6
       });
     }
 
@@ -105,27 +109,33 @@
   <!-- Month & Year Control Header -->
   <div class="cal-header">
     <button type="button" class="cal-nav-btn" onclick={prevMonth} title="Previous Month">
-      <ChevronLeft size={18} />
+      <ChevronLeft size={16} />
     </button>
 
     <div class="cal-title">
-      <CalendarIcon size={16} class="cal-title-icon" />
+      <CalendarIcon size={15} class="cal-title-icon" />
       <span>{monthNames[viewMonth]} {viewYear}</span>
     </div>
 
     <button type="button" class="cal-nav-btn" onclick={nextMonth} title="Next Month">
-      <ChevronRight size={18} />
+      <ChevronRight size={16} />
     </button>
   </div>
 
-  <!-- Day of Week Headers -->
+  <!-- Day of Week Headers (Sunday & Saturday highlighted differently) -->
   <div class="cal-weekdays">
-    {#each dayNames as dayName}
-      <span class="weekday-cell">{dayName}</span>
+    {#each dayNames as dayName, idx}
+      <span 
+        class="weekday-cell" 
+        class:sunday={idx === 0} 
+        class:saturday={idx === 6}
+      >
+        {dayName}
+      </span>
     {/each}
   </div>
 
-  <!-- 2X Grid Cells -->
+  <!-- 5-Row Fixed Grid Cells -->
   <div class="cal-grid">
     {#each calendarDays as cell}
       {#if cell.dayNum === null}
@@ -137,6 +147,8 @@
           class:disabled={cell.isDisabled}
           class:today={cell.isToday}
           class:selected={cell.isSelected}
+          class:sunday={cell.isSunday}
+          class:saturday={cell.isSaturday}
           disabled={cell.isDisabled}
           onclick={() => selectDay(cell)}
         >
@@ -151,13 +163,14 @@
   .calendar-2x-container {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    background: rgba(6, 10, 18, 0.95);
-    border: 1.5px solid rgba(139, 92, 246, 0.45);
-    border-radius: 20px;
-    padding: 18px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 24px rgba(139, 92, 246, 0.15);
-    width: 100%;
+    gap: 10px;
+    background: rgba(8, 14, 26, 0.98);
+    backdrop-filter: blur(10px);
+    border: 1.5px solid rgba(245, 158, 11, 0.50);
+    border-radius: 22px;
+    padding: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 30px rgba(245, 158, 11, 0.20);
+    width: 290px;
     box-sizing: border-box;
     user-select: none;
   }
@@ -166,30 +179,31 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 8px;
+    padding: 2px 4px;
   }
 
   .cal-title {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 15px;
+    gap: 6px;
+    font-size: 13px;
     font-weight: 900;
     letter-spacing: 0.06em;
+    word-spacing: 0.06em;
     color: #f3e8ff;
   }
 
   :global(.cal-title-icon) {
-    color: #c4b5fd;
+    color: #f59e0b;
   }
 
   .cal-nav-btn {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: #c4b5fd;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #f59e0b;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -197,78 +211,97 @@
     transition: all 0.15s ease;
   }
   .cal-nav-btn:hover {
-    background: rgba(139, 92, 246, 0.25);
-    border-color: rgba(139, 92, 246, 0.55);
+    background: rgba(245, 158, 11, 0.25);
+    border-color: rgba(245, 158, 11, 0.65);
     color: #ffffff;
+    transform: scale(1.1);
   }
 
   .cal-weekdays {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 6px;
+    gap: 4px;
     text-align: center;
-    padding-bottom: 4px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   .weekday-cell {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 900;
     letter-spacing: 0.08em;
-    color: var(--text-dim);
-    padding: 4px 0;
+    color: #94a3b8;
+    padding: 2px 0;
   }
+  /* DISTINCT SUNDAY & SATURDAY HIGHLIGHTS */
+  .weekday-cell.sunday { color: #f87171; font-weight: 900; }
+  .weekday-cell.saturday { color: #38bdf8; font-weight: 900; }
 
   .cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 8px;
+    grid-auto-rows: 32px;
+    gap: 5px;
+    justify-items: center;
   }
 
   .cal-day-cell {
-    aspect-ratio: 1;
-    min-height: 42px;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.03);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: #ffffff;
-    font-size: 15px;
+    font-size: 12.5px;
     font-weight: 800;
+    font-variant-numeric: tabular-nums;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.15s ease;
+  }
+
+  .cal-day-cell.sunday:not(.disabled):not(.selected) {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+  }
+  .cal-day-cell.saturday:not(.disabled):not(.selected) {
+    background: rgba(56, 189, 248, 0.1);
+    border-color: rgba(56, 189, 248, 0.3);
+    color: #7dd3fc;
   }
 
   .cal-day-cell:hover:not(.disabled) {
-    background: rgba(139, 92, 246, 0.25);
-    border-color: rgba(168, 85, 247, 0.65);
+    background: rgba(245, 158, 11, 0.25);
+    border-color: rgba(245, 158, 11, 0.7);
     color: #ffffff;
-    transform: scale(1.08);
-    box-shadow: 0 0 16px rgba(139, 92, 246, 0.35);
+    transform: scale(1.1);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
   }
 
   .cal-day-cell.today {
-    border-color: rgba(59, 130, 246, 0.7);
-    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(245, 158, 11, 0.8);
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+    font-weight: 900;
   }
 
   .cal-day-cell.selected {
-    background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
-    border-color: rgba(196, 181, 253, 0.8) !important;
-    color: #ffffff !important;
+    background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+    border-color: rgba(254, 243, 199, 0.9) !important;
+    color: #000000 !important;
     font-weight: 900 !important;
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.6) !important;
-    transform: scale(1.05) !important;
+    box-shadow: 0 0 16px rgba(245, 158, 11, 0.6) !important;
   }
 
   .cal-day-cell.disabled {
-    opacity: 0.25;
+    opacity: 0.2;
     cursor: not-allowed;
     background: transparent;
     border-color: transparent;
-    color: var(--text-dim);
+    color: #64748b;
   }
 
   .cal-day-cell.empty {

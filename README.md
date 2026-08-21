@@ -266,8 +266,7 @@ The permanent log of finished campaigns and suspended operations.
 ```
 
 ### 1. Embedded WASM SQLite Database
-- **Zero-Dependency Engine**: Built using pure JavaScript/WASM `sql.js` running in RAM.
-- **Debounced Disk Writes**: Changes are written to disk via 500ms debounced flushes (`saveDbToDisk`).
+- **Primary Database File**: `%LOCALAPPDATA%\Campaigns\Database\campaigns.sqlite`
 - **Exit Synchronization**: Electron `before-quit` and `will-quit` lifecycle hooks execute a synchronous disk write (`flushDbToDisk`).
 
 ### 2. Obsidian Markdown Vault Integration

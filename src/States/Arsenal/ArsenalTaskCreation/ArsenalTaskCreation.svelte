@@ -1,3 +1,7 @@
+<script module>
+  let lastUsedTags = $state([]);
+</script>
+
 <script>
   import { store } from '../../../lib/store.svelte.js';
   import { Plus, X, Tag as TagIcon, Target, ShieldAlert, Sparkles, Check, Flame, AlertTriangle, Eye, Loader2, AlertCircle } from 'lucide-svelte';
@@ -8,6 +12,17 @@
   let tags = $state([]); // Array of attached tag strings (0 to 7)
   let isTagSearchOpen = $state(false);
   let isSubmitting = $state(false);
+
+  // Pre-fill last used tags when opening creation modal if tags are empty
+  let wasModalOpen = false;
+  $effect(() => {
+    if (store.isTaskModalOpen && !wasModalOpen) {
+      if (tags.length === 0 && lastUsedTags.length > 0) {
+        tags = [...lastUsedTags];
+      }
+    }
+    wasModalOpen = store.isTaskModalOpen;
+  });
 
   // Maximum allowed tags per task
   const MAX_TAGS = 7;
@@ -137,13 +152,15 @@
       });
 
       if (success) {
+        if (tags.length > 0) {
+          lastUsedTags = [...tags];
+        }
         title = '';
         priority = 'Medium';
         tags = [];
         tagInput = '';
         isTagSearchOpen = false;
         store.isTaskModalOpen = false;
-        await store.loadAllData();
       }
     } catch (err) {
       store.showToast('Dispatch failed: ' + err.message, 'danger');
@@ -184,7 +201,7 @@
 {#if store.isTaskModalOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="modal-overlay" onclick={handleOverlayClick}>
+  <div class="modal-overlay">
     <div class="modal-card" onclick={handleModalClick}>
       
       <!-- Minimalist Header -->
@@ -390,6 +407,13 @@
             {/if}
           </div>
 
+          {#if lastUsedTags.length > 0 && tags.length > 0 && tags.length === lastUsedTags.length && tags.every(t => lastUsedTags.includes(t))}
+            <div class="last-used-hint">
+              <span>↩ Tags remembered from previous campaign</span>
+              <button type="button" class="clear-last-tags-btn" onclick={() => tags = []}>Clear all</button>
+            </div>
+          {/if}
+
           {#if tags.length >= MAX_TAGS}
             <div class="max-limit-warning">
               <ShieldAlert size={14} />
@@ -438,8 +462,8 @@
     right: 0;
     z-index: 8000;
     background: rgba(4, 7, 14, 0.86);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -454,10 +478,10 @@
     height: auto;
     max-height: calc(100vh - 90px);
     background: rgba(12, 17, 29, 0.98);
-    backdrop-filter: blur(40px);
-    -webkit-backdrop-filter: blur(40px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(139, 92, 246, 0.38);
-    border-radius: 24px;
+    border-radius: 26px;
     box-shadow: 0 28px 72px rgba(0, 0, 0, 0.95), 0 0 40px rgba(139, 92, 246, 0.20);
     display: flex;
     flex-direction: column;
@@ -525,22 +549,24 @@
   .close-btn {
     width: 36px;
     height: 36px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    color: var(--text-muted);
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
+    color: #94a3b8;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     cursor: pointer;
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
   .close-btn:hover {
-    background: rgba(239, 68, 68, 0.22);
-    border-color: rgba(239, 68, 68, 0.45);
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.7);
     color: #fca5a5;
-    box-shadow: 0 0 14px rgba(239, 68, 68, 0.30);
+    transform: rotate(90deg) scale(1.08);
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.45);
   }
 
   /* Form Body */
@@ -793,8 +819,8 @@
     right: 0;
     z-index: 10000;
     background: rgba(8, 12, 22, 0.98);
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(139, 92, 246, 0.40);
     border-radius: 14px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.9);
@@ -994,6 +1020,35 @@
     color: #fca5a5;
     background: rgba(239, 68, 68, 0.30);
   }
+
+  .last-used-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+    padding: 6px 12px;
+    background: rgba(139, 92, 246, 0.10);
+    border: 1px dashed rgba(139, 92, 246, 0.35);
+    border-radius: 10px;
+    color: #c4b5fd;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
+  .clear-last-tags-btn {
+    background: transparent;
+    border: none;
+    color: #f87171;
+    font-size: 10.5px;
+    font-weight: 800;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+    transition: opacity 0.15s ease;
+  }
+  .clear-last-tags-btn:hover { opacity: 0.8; }
 
   .max-limit-warning {
     display: flex;

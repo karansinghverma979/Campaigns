@@ -4,7 +4,7 @@
   import { ChronosMath } from '../../lib/ChronosMath.js';
   import { 
     Flame, Search, ChevronDown, ArrowUp, ArrowDown, 
-    Tag as TagIcon, Calendar, Clock, CheckSquare, Square
+    Tag as TagIcon, Calendar, Clock, CheckSquare, Square, X
   } from 'lucide-svelte';
   import ExecutionTaskWindow from './ExecutionTaskView/ExecutionTaskWindow.svelte';
 
@@ -29,6 +29,14 @@
   let tagDropdownOpen = $state(false);
   let sortDropdownOpen = $state(false);
 
+  // Reset filters when navigating away so returning always shows a clean state
+  $effect(() => {
+    if (store.activeTab !== 'EXECUTION') {
+      searchQuery = ''; _searchRaw = ''; selectedTagNames = []; filterPriority = 'ALL';
+      tagDropdownOpen = false; sortDropdownOpen = false;
+    }
+  });
+
   // ── Selected task for detail modal window ──
   let selectedTask = $state(null);
 
@@ -42,20 +50,29 @@
     }
   }
 
-  // Action to smoothly scroll highlighted element into view
+  // Action to smoothly scroll highlighted element into view with timer cleanup
   function scrollIfHighlighted(node, isHighlighted) {
+    let timer = null;
     if (isHighlighted) {
-      setTimeout(() => {
-        node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      timer = setTimeout(() => {
+        if (node && node.isConnected) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
       }, 60);
     }
     return {
       update(nextState) {
+        if (timer) clearTimeout(timer);
         if (nextState) {
-          setTimeout(() => {
-            node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          timer = setTimeout(() => {
+            if (node && node.isConnected) {
+              node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
           }, 60);
         }
+      },
+      destroy() {
+        if (timer) clearTimeout(timer);
       }
     };
   }
@@ -117,11 +134,11 @@
         const remainingB = ChronosMath.daysRemaining(b.deadline);
         comparison = remainingA - remainingB;
       } else if (sortBy === 'date') {
-        const dateA = a.initiated_at || a.origin_date || '';
-        const dateB = b.initiated_at || b.origin_date || '';
-        comparison = dateA.localeCompare(dateB);
+        const parsedA = ChronosMath.parseDate(a.initiated_at || a.origin_date || '');
+        const parsedB = ChronosMath.parseDate(b.initiated_at || b.origin_date || '');
+        comparison = (parsedA ? parsedA.getTime() : 0) - (parsedB ? parsedB.getTime() : 0);
       } else if (sortBy === 'name') {
-        comparison = a.title.localeCompare(b.title);
+        comparison = (a.title || '').localeCompare(b.title || '');
       }
 
       return sortDir === 'asc' ? comparison : -comparison;
@@ -130,12 +147,20 @@
     return result;
   });
 
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   // Compile once per search query change, not per card render
-  const _searchRegex = $derived(
-    searchQuery.trim()
-      ? new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')})`, 'gi')
-      : null
-  );
+  const _searchRegex = $derived.by(() => {
+    const q = searchQuery.trim();
+    if (!q) return null;
+    try {
+      return new RegExp(`(${escapeRegExp(q)})`, 'gi');
+    } catch (e) {
+      return null;
+    }
+  });
 
   function toggleTagSelection(tagName) {
     if (selectedTagNames.includes(tagName)) {
@@ -164,22 +189,23 @@
       store.setHighlightedTaskId(selectedTask.id);
     }
     selectedTask = null;
-    store.loadAllData();
   }
 
-  // Helper for title search highlighting
-  function getTitleParts(title, query) {
+  // Helper for title search highlighting without allocating RegExp objects
+  function getTitleParts(title) {
+    if (!title) return [{ text: '', highlight: false }];
     if (!_searchRegex) return [{ text: title, highlight: false }];
-    const regex = new RegExp(_searchRegex.source, _searchRegex.flags); // clone to reset lastIndex
+    _searchRegex.lastIndex = 0;
     const parts = [];
     let lastIdx = 0;
     let match;
-    while ((match = regex.exec(title)) !== null) {
+    while ((match = _searchRegex.exec(title)) !== null) {
       if (match.index > lastIdx) {
         parts.push({ text: title.substring(lastIdx, match.index), highlight: false });
       }
       parts.push({ text: match[0], highlight: true });
-      lastIdx = regex.lastIndex;
+      lastIdx = _searchRegex.lastIndex;
+      if (!match[0].length) { _searchRegex.lastIndex++; }
     }
     if (lastIdx < title.length) {
       parts.push({ text: title.substring(lastIdx), highlight: false });
@@ -242,6 +268,17 @@
         oninput={(e) => handleSearchInput(e.target.value)}
         class="search-input"
       />
+      {#if _searchRaw || searchQuery || filterPriority !== 'ALL' || selectedTagNames.length > 0}
+        <button 
+          type="button" 
+          class="btn-search-clear" 
+          onclick={() => { _searchRaw = ''; searchQuery = ''; filterPriority = 'ALL'; selectedTagNames = []; }}
+          title="Clear search & filters"
+          aria-label="Clear search and filters"
+        >
+          <X size={13} />
+        </button>
+      {/if}
     </div>
 
     <!-- TAG MULTI-SELECT DROPDOWN -->
@@ -381,16 +418,32 @@
           onclick={(e) => openDetail(task, e)}
         >
           <!-- Left priority color bar -->
-          <span class="priority-bar {task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}"></span>
+          <span class="priority-bar {(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}"></span>
           
-          <!-- Card Content Body -->
-          <div class="card-body-left">
-            <!-- Header Row: Initiated Date ONLY -->
-            <div class="card-header-row">
-              <span class="meta-date"><Calendar size={11} /> Initiated: {task.initiated_at || task.origin_date}</span>
+          <div class="card-main-flow">
+            <!-- Top Header: Initiated Date on left, Days Remaining & Priority Pill on right -->
+            <div class="card-header-top">
+              <span class="meta-date"><Calendar size={12} /> Initiated: {task.initiated_at || task.origin_date}</span>
+              
+              <div class="header-pills-right">
+                <!-- Remaining / Overdue Days Pill with Prominent Deadline Date -->
+                <div class="days-pill" class:urgent={daysLeft <= 2} class:overdue={daysLeft < 0}>
+                  <Clock size={13} />
+                  <span class="pill-status">{daysLeft < 0 ? `${Math.abs(daysLeft)} DAYS OVERDUE` : daysLeft === 0 ? 'DUE TODAY' : `${daysLeft} DAYS REMAINING`}</span>
+                  {#if task.deadline}
+                    <span class="pill-divider">•</span>
+                    <span class="deadline-text">DEADLINE: {task.deadline}</span>
+                  {/if}
+                </div>
+
+                <!-- Priority Status Badge -->
+                <span class="badge-tactical badge-{(task.priority || 'Medium').toLowerCase() === 'critical' ? 'high' : (task.priority || 'Medium').toLowerCase()}">
+                  {task.priority === 'Critical' ? 'High' : (task.priority || 'Medium').toUpperCase()}
+                </span>
+              </div>
             </div>
 
-            <!-- Title with Search Highlight (Double click to open .md file) -->
+            <!-- Campaign Title: 100% Full Width, Large, Unrestricted Breathing Room -->
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <h3 
@@ -398,7 +451,7 @@
               ondblclick={(e) => { e.stopPropagation(); store.openStrategiesFile(task); }}
               title="Double-click to open Markdown strategy note (.md)"
             >
-              {#each getTitleParts(task.title, searchQuery) as part}
+              {#each getTitleParts(task.title) as part}
                 {#if part.highlight}
                   <mark class="search-highlight">{part.text}</mark>
                 {:else}
@@ -407,7 +460,7 @@
               {/each}
             </h3>
 
-            <!-- Tags -->
+            <!-- Tags: Fluid Dynamic Wrap across Multiple Rows -->
             {#if task.tags && task.tags.length > 0}
               <div class="tags-row">
                 {#each task.tags as tag}
@@ -419,34 +472,19 @@
                     onclick={(e) => filterByTag(tag.tag_name, e)}
                     title="Filter by tag: {tag.tag_name}"
                   >
-                    <TagIcon size={10} /> {tag.tag_name}
+                    <TagIcon size={11} /> {tag.tag_name}
                   </span>
                 {/each}
               </div>
             {/if}
-          </div>
 
-          <!-- EXACT SAME HORIZONTAL ROW ALIGNMENT: REMAINING DAYS PILL, SUBTASK PROGRESS BAR, AND PRIORITY BADGE -->
-          <div class="card-center-row">
-            <!-- Remaining Days Pill -->
-            <div class="days-pill" class:urgent={daysLeft <= 2} class:overdue={daysLeft < 0}>
-              <Clock size={11} />
-              <span>{daysLeft < 0 ? `${Math.abs(daysLeft)} DAYS OVERDUE` : daysLeft === 0 ? 'DUE TODAY' : `${daysLeft} DAYS LEFT`}</span>
-              <span class="deadline-text">({task.deadline})</span>
-            </div>
-
-            <!-- Subtask Progress Bar & Percentage -->
-            <div class="subtask-progress-box">
+            <!-- Bottom Progress Track: Full Width, Non-Congested -->
+            <div class="card-progress-footer">
               <div class="progress-bar-track">
                 <div class="progress-bar-fill" style="width: {pct}%"></div>
               </div>
-              <span class="progress-pct-label">{pct}% [{completedSubtasks}/{totalSubtasks}]</span>
+              <span class="progress-pct-label">{pct}% • {completedSubtasks} of {totalSubtasks} subtasks</span>
             </div>
-
-            <!-- Priority Status Badge -->
-            <span class="badge-tactical badge-{task.priority.toLowerCase() === 'critical' ? 'high' : task.priority.toLowerCase()}">
-              {task.priority === 'Critical' ? 'High' : task.priority.toUpperCase()}
-            </span>
           </div>
         </div>
       {/each}
@@ -479,8 +517,8 @@
     gap: 12px;
     padding: 14px 20px;
     background: rgba(10, 15, 26, 0.90);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-wrap: nowrap;
     width: 100%;
@@ -601,7 +639,7 @@
     position: absolute; top: calc(100% + 8px); right: 0; z-index: 99999;
     min-width: 190px; max-height: 260px; overflow-y: auto;
     background: rgba(12, 17, 30, 0.98);
-    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(239, 68, 68, 0.35);
     border-radius: var(--radius-md);
     box-shadow: 0 16px 40px rgba(0,0,0,0.85);
@@ -635,44 +673,77 @@
     display: flex; align-items: center; justify-content: center;
     transition: all 0.15s ease; cursor: pointer; flex-shrink: 0;
   }
-  .sort-dir-btn:hover { background: rgba(239,68,68,0.20); border-color: rgba(239,68,68,0.40); color: #fca5a5; }
+  .sort-dir-btn:hover { background: rgba(59, 130, 246, 0.20); border-color: rgba(59, 130, 246, 0.40); color: #93c5fd; }
 
-  /* ── DYNAMIC HEIGHT TASK CARDS (ZERO OVERLAPS) ── */
+  .btn-search-clear {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 0;
+  }
+  .btn-search-clear:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.60);
+    color: #fee2e2;
+    transform: translateY(-50%) scale(1.1);
+  }
+
+
+  .execution-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    background: transparent;
+    overflow: hidden;
+    position: relative;
+    user-select: none;
+  }
+
+  /* ── AUTO-ADJUSTABLE DYNAMIC HEIGHT TASK CARDS ── */
+  /* ── AUTO-EXPANDING DYNAMIC TASK CARDS (NATURAL FLOW & ZERO CUTOFF) ── */
   .execution-cards-container {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
+    padding: 20px 24px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
   }
 
   .task-card {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 100px;
+    flex-direction: row;
+    align-items: stretch;
+    flex-shrink: 0;
     height: auto;
-    padding-right: 24px;
-    background: rgba(14, 20, 33, 0.75);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    min-height: 110px;
+    background: rgba(10, 16, 30, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 22px;
+    border-radius: 18px;
     overflow: hidden;
     cursor: pointer;
-    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.15s ease, background 0.15s ease;
     width: 100%;
     box-sizing: border-box;
   }
   .task-card:hover {
-    border-color: rgba(139, 92, 246, 0.40);
-    background: rgba(22, 28, 46, 0.92);
+    border-color: rgba(139, 92, 246, 0.55);
+    background: rgba(22, 28, 48, 0.98);
     transform: translateY(-2px);
-    box-shadow:
-      0 12px 32px rgba(0,0,0,0.50),
-      0 0 24px rgba(139, 92, 246, 0.15),
-      inset 0 1px 0 rgba(255,255,255,0.06);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.55), 0 0 28px rgba(139, 92, 246, 0.22);
   }
   .task-card.just-updated {
     animation: highlightCardPulse 2.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -685,33 +756,62 @@
     100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); transform: scale(1); }
   }
 
-  .priority-bar { width: 5px; flex-shrink: 0; display: block; align-self: stretch; transition: box-shadow 0.2s ease; }
+  .priority-bar { width: 5px; flex-shrink: 0; display: block; align-self: stretch; }
   .priority-bar.high   { background: linear-gradient(180deg, #ef4444, #dc2626); }
   .priority-bar.medium { background: linear-gradient(180deg, #f59e0b, #d97706); }
   .priority-bar.low    { background: linear-gradient(180deg, #3b82f6, #2563eb); }
-  .task-card:hover .priority-bar.high   { box-shadow: 4px 0 16px rgba(239,68,68,0.40); }
-  .task-card:hover .priority-bar.medium { box-shadow: 4px 0 16px rgba(245,158,11,0.40); }
-  .task-card:hover .priority-bar.low    { box-shadow: 4px 0 16px rgba(59,130,246,0.40); }
 
-  .card-body-left {
-    flex: 1;
-    padding: 16px 22px;
+  .card-main-flow {
+    flex: 1 1 auto;
+    padding: 18px 20px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
     min-width: 0;
+    height: auto;
+    box-sizing: border-box;
   }
 
-  .card-header-row {
-    display: flex; align-items: center; gap: 12px;
+  .card-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
   }
-  .meta-date { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: #60a5fa; }
+  .meta-date { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: #60a5fa; letter-spacing: 0.02em; flex-shrink: 0; }
+
+  .header-pills-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .days-pill {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 5px 13px; border-radius: 99px; font-size: 11.5px; font-weight: 800;
+    color: #34d399; background: rgba(52, 211, 153, 0.14); border: 1px solid rgba(52, 211, 153, 0.38);
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .days-pill.urgent { color: #f59e0b; background: rgba(245, 158, 11, 0.16); border-color: rgba(245, 158, 11, 0.45); }
+  .days-pill.overdue { color: #f87171; background: rgba(239, 68, 68, 0.22); border-color: rgba(239, 68, 68, 0.55); }
+  .pill-status { font-weight: 900; letter-spacing: 0.04em; }
+  .pill-divider { opacity: 0.5; font-size: 10px; }
+  .deadline-text { font-size: 11.5px; font-weight: 800; opacity: 0.95; letter-spacing: 0.03em; }
 
   .card-title {
-    font-size: 15px; font-weight: 900; line-height: 1.38;
-    color: #f3e8ff; letter-spacing: 0.02em; word-spacing: 0.04em;
-    word-break: break-word; white-space: normal;
-    margin: 0; max-height: 62px; overflow: hidden;
+    font-size: 16.5px;
+    font-weight: 800;
+    line-height: 1.65;
+    color: #f8fafc;
+    letter-spacing: 0.015em;
+    word-spacing: 0.04em;
+    word-break: break-word;
+    white-space: normal;
+    margin: 2px 0;
+    flex-shrink: 0;
   }
 
   :global(.search-highlight) {
@@ -721,20 +821,28 @@
     border-radius: 2px;
   }
 
-  .tags-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; max-height: 44px; overflow: hidden; }
+  .tags-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
   .tag {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-    background: rgba(59, 130, 246, 0.10);
-    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.12);
+    padding: 3px 10px;
     border-radius: 99px;
-    border: 1px solid rgba(59, 130, 246, 0.18);
+    border: 1px solid rgba(59, 130, 246, 0.22);
     transition: all 0.15s ease;
+    flex-shrink: 0;
   }
   .tag.clickable { cursor: pointer; }
   .tag.clickable:hover {
@@ -750,40 +858,17 @@
     box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
   }
 
-  /* ── DEDICATED LAYOUT AREA ALLOCATION (PERFECT COLUMNS) ── */
-  .card-center-row {
-    display: grid;
-    grid-template-columns: minmax(185px, 220px) minmax(180px, 220px) 90px;
-    gap: 16px;
-    align-items: center;
-    justify-items: end;
-    flex-shrink: 0;
-    padding: 12px 0;
-  }
-
-  .days-pill {
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 7px 16px; border-radius: 14px; font-size: 11.5px; font-weight: 900;
-    color: #34d399; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35);
-    width: 100%; box-sizing: border-box; text-align: center; white-space: nowrap;
-  }
-  .days-pill.urgent { color: #f59e0b; background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.40); }
-  .days-pill.overdue { color: #f87171; background: rgba(239, 68, 68, 0.20); border-color: rgba(239, 68, 68, 0.50); }
-  .deadline-text { font-size: 10.5px; opacity: 0.85; white-space: nowrap; }
-
-  /* Subtask Progress Bar (Single Row, Expanded Area) */
-  .subtask-progress-box {
+  /* ── BOTTOM PROGRESS TRACK (FULL WIDTH & CLEAN) ── */
+  .card-progress-footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    background: rgba(0, 0, 0, 0.35);
-    padding: 7px 14px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    gap: 12px;
+    margin-top: 4px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
     width: 100%;
     box-sizing: border-box;
-    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .progress-bar-track {
@@ -803,8 +888,8 @@
 
   .progress-pct-label {
     font-size: 11px;
-    font-weight: 900;
-    letter-spacing: 0.04em;
+    font-weight: 800;
+    letter-spacing: 0.03em;
     color: #a7f3d0;
     white-space: nowrap;
     flex-shrink: 0;
@@ -825,4 +910,5 @@
   @keyframes float-icon {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-6px); }
-  }</style>
+  }
+</style>

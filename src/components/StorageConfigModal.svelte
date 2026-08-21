@@ -21,28 +21,14 @@
   }
 
   async function handleOpenStrategiesFolder() {
-    if (!window.electronAPI) return;
-    try {
-      const res = await window.electronAPI.openStrategiesFolder();
-      if (res.success) {
-        store.showToast('Opened Strategies folder in File Explorer.', 'info');
-      } else {
-        store.showToast('Could not open Strategies folder: ' + res.error, 'warning');
-      }
-    } catch (e) {
-      store.showToast('Could not open Strategies folder: ' + e.message, 'warning');
-    }
+    await store.openStrategiesFolder();
   }
 </script>
 
 {#if store.isConfigModalOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div 
-    class="modal-overlay" 
-    onclick={() => store.isConfigModalOpen = false}
-    onkeydown={handleOverlayKeyDown}
-  >
+  <div class="modal-overlay">
     <div class="modal-card" onclick={(e) => e.stopPropagation()}>
       
       <!-- Header -->
@@ -149,11 +135,14 @@
 <style>
   .modal-overlay {
     position: fixed;
-    inset: 0;
-    z-index: 99990;
+    top: 64px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 8000;
     background: rgba(4, 7, 14, 0.88);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -171,7 +160,7 @@
     max-width: 700px;
     background: rgba(12, 17, 29, 0.98);
     border: 1px solid rgba(139, 92, 246, 0.45);
-    border-radius: 24px;
+    border-radius: 26px;
     box-shadow: 0 28px 72px rgba(0, 0, 0, 0.95), 0 0 40px rgba(139, 92, 246, 0.22);
     display: flex;
     flex-direction: column;
@@ -228,23 +217,26 @@
   }
 
   .close-btn {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    color: var(--text-muted);
+    width: 36px;
+    height: 36px;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
+    color: #94a3b8;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
   .close-btn:hover {
-    background: rgba(239, 68, 68, 0.22);
-    border-color: rgba(239, 68, 68, 0.45);
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.7);
     color: #fca5a5;
+    transform: rotate(90deg) scale(1.08);
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.45);
   }
 
   .modal-body {
@@ -319,8 +311,8 @@
   .path-value-box {
     background: rgba(4, 7, 14, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    padding: 10px 14px;
+    border-radius: 16px;
+    padding: 11px 16px;
     overflow-x: auto;
   }
 
@@ -344,11 +336,12 @@
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 9px 16px;
-    font-size: 11px;
+    padding: 10px 20px;
+    font-size: 11.5px;
     font-weight: 900;
     letter-spacing: 0.06em;
-    border-radius: 10px;
+    word-spacing: 0.06em;
+    border-radius: 9999px;
     cursor: pointer;
     transition: all 0.15s ease;
     flex-shrink: 0;
@@ -491,14 +484,15 @@
   }
 
   .btn-close-modal {
-    padding: 9px 22px;
+    padding: 10px 24px;
     font-size: 11.5px;
     font-weight: 900;
     letter-spacing: 0.06em;
+    word-spacing: 0.06em;
     color: #f3e8ff;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 12px;
+    border-radius: 9999px;
     cursor: pointer;
     transition: all 0.15s ease;
   }

@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Dark Cosmic Cyberpunk Glassmorphic Disc -->
+    <radialGradient id="cyberGlassRadial" cx="50%" cy="36%" r="68%">
+      <stop offset="0%" stop-color="#231545" stop-opacity="0.96" />
+      <stop offset="40%" stop-color="#14112e" stop-opacity="0.94" />
+      <stop offset="75%" stop-color="#0b0e22" stop-opacity="0.96" />
+      <stop offset="100%" stop-color="#050713" stop-opacity="1" />
+    </radialGradient>
+
+    <!-- Refined Cyberpunk Violet-Cyan Sheen -->
+    <linearGradient id="cyberSheenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc" stop-opacity="0.45" />
+      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.30" />
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.38" />
+    </linearGradient>
+
+    <!-- Neon Cyberpunk Glass Border Ring -->
+    <linearGradient id="neonCyberBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e879f9" stop-opacity="0.95" />
+      <stop offset="30%" stop-color="#a855f7" stop-opacity="0.90" />
+      <stop offset="70%" stop-color="#38bdf8" stop-opacity="0.90" />
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.85" />
+    </linearGradient>
+
+    <!-- Core Swords Cyber Gradient: Crisp Luminous Violet to Cyan Core -->
+    <linearGradient id="swordCyberCore" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="25%" stop-color="#fae8ff" />
+      <stop offset="65%" stop-color="#e0e7ff" />
+      <stop offset="100%" stop-color="#bae6fd" />
+    </linearGradient>
+
+    <!-- Inset Ambient Top Glass Highlight -->
+    <linearGradient id="insetGlassGloss" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35" />
+      <stop offset="25%" stop-color="#ffffff" stop-opacity="0.04" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.25" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Fine Neon Halo Ring -->
+  <circle cx="256" cy="256" r="248" fill="none" stroke="url(#neonCyberBorder)" stroke-width="2.5" opacity="0.30" />
+
+  <!-- Base Circular Glass Disc -->
+  <circle cx="256" cy="256" r="244" fill="url(#cyberGlassRadial)" />
+  <circle cx="256" cy="256" r="244" fill="url(#cyberSheenGrad)" />
+
+  <!-- Subtle Cyberpunk Tactical Circuit / HUD Patterns -->
+  <circle cx="256" cy="256" r="208" fill="none" stroke="#a855f7" stroke-width="1.2" stroke-dasharray="4 8" opacity="0.20" />
+  <circle cx="256" cy="256" r="162" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="6 6" opacity="0.16" />
+  <circle cx="256" cy="256" r="115" fill="none" stroke="#c084fc" stroke-width="1" stroke-dasharray="2 5" opacity="0.15" />
+
+  <!-- Micro Crosshair & Corner Tactical Hex Nodes -->
+  <path d="M 256 32 L 256 46 M 256 466 L 256 480 M 32 256 L 46 256 M 466 256 L 480 256" stroke="#c084fc" stroke-width="1.5" opacity="0.30" />
+  <circle cx="115" cy="115" r="2.5" fill="#38bdf8" opacity="0.45" />
+  <circle cx="397" cy="115" r="2.5" fill="#e879f9" opacity="0.45" />
+  <circle cx="115" cy="397" r="2.5" fill="#a855f7" opacity="0.45" />
+  <circle cx="397" cy="397" r="2.5" fill="#06b6d4" opacity="0.45" />
+
+  <!-- Inset Top Glass Gloss Reflection -->
+  <circle cx="256" cy="256" r="244" fill="url(#insetGlassGloss)" />
+
+  <!-- Outer Glowing Glass Border: 11px refined rim -->
+  <circle cx="256" cy="256" r="242" fill="none" stroke="url(#neonCyberBorder)" stroke-width="10.5" />
+
+  <!-- ── SLEEK CYBERPUNK SWORDS (Refined Stroke Width ~2.1 & 14.4x scale) ── -->
+  <!-- Translate = 256 - 14.4 * 12 = 83.2 -->
+
+  <!-- Layer 1: Ambient Cyber Violet-Cyan Bloom -->
+  <g transform="translate(83.2, 83.2) scale(14.4)" 
+     fill="none" 
+     stroke="#818cf8" 
+     stroke-width="4.8" 
+     stroke-linecap="round" 
+     stroke-linejoin="round" 
+     opacity="0.25">
+    <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+    <line x1="13" x2="19" y1="19" y2="13" />
+    <line x1="16" x2="20" y1="16" y2="20" />
+    <line x1="19" x2="21" y1="21" y2="19" />
+    <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+    <line x1="5" x2="9" y1="14" y2="18" />
+    <line x1="7" x2="4" y1="17" y2="20" />
+    <line x1="3" x2="5" y1="19" y2="21" />
+  </g>
+
+  <!-- Layer 2: Vivid Electric Neon Rim Stroke -->
+  <g transform="translate(83.2, 83.2) scale(14.4)" 
+     fill="none" 
+     stroke="#c084fc" 
+     stroke-width="3.2" 
+     stroke-linecap="round" 
+     stroke-linejoin="round" 
+     opacity="0.55">
+    <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+    <line x1="13" x2="19" y1="19" y2="13" />
+    <line x1="16" x2="20" y1="16" y2="20" />
+    <line x1="19" x2="21" y1="21" y2="19" />
+    <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+    <line x1="5" x2="9" y1="14" y2="18" />
+    <line x1="7" x2="4" y1="17" y2="20" />
+    <line x1="3" x2="5" y1="19" y2="21" />
+  </g>
+
+  <!-- Layer 3: Main Crisp Core Blade Stroke (Sleeker 2.1 Stroke Width) -->
+  <g transform="translate(83.2, 83.2) scale(14.4)" 
+     fill="none" 
+     stroke="url(#swordCyberCore)" 
+     stroke-width="2.1" 
+     stroke-linecap="round" 
+     stroke-linejoin="round">
+    <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+    <line x1="13" x2="19" y1="19" y2="13" />
+    <line x1="16" x2="20" y1="16" y2="20" />
+    <line x1="19" x2="21" y1="21" y2="19" />
+    <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+    <line x1="5" x2="9" y1="14" y2="18" />
+    <line x1="7" x2="4" y1="17" y2="20" />
+    <line x1="3" x2="5" y1="19" y2="21" />
+  </g>
+
+  <!-- Intersection Cyan-Violet Spark Node -->
+  <circle cx="256" cy="256" r="4.5" fill="#ffffff" opacity="0.95" />
+  <circle cx="256" cy="256" r="10" fill="#38bdf8" opacity="0.25" />
+</svg>

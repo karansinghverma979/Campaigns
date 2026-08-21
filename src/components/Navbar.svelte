@@ -2,13 +2,12 @@
   import { store } from '../lib/store.svelte.js';
   import {
     RefreshCw, X, Brain, AlertTriangle,
-    Archive, Flame, Swords, Minus, Maximize2, Database
+    Archive, Flame, Swords, Minus, Database, Zap
   } from 'lucide-svelte';
 
   function handleTabChange(tab) { store.activeTab = tab; }
 
   function minimize() { if (window.electronAPI) window.electronAPI.minimizeWindow(); }
-  function maximize() { if (window.electronAPI && window.electronAPI.maximizeWindow) window.electronAPI.maximizeWindow(); }
   function close() { if (window.electronAPI) window.electronAPI.closeWindow(); }
 </script>
 
@@ -66,6 +65,14 @@
       <Archive size={16} strokeWidth={2.2} />
       <span>ARCHIVE</span>
     </button>
+
+    <button type="button" class="tab-btn strikes"
+      class:active={store.activeTab === 'STRIKES'}
+      onclick={() => handleTabChange('STRIKES')}
+      title="Strikes Daily Directives (Ctrl+5)">
+      <Zap size={16} strokeWidth={2.2} />
+      <span>STRIKES</span>
+    </button>
   </nav>
 
   <!-- ── Divider ── -->
@@ -75,9 +82,6 @@
   <div class="window-controls">
     <button type="button" class="win-btn minimize" onclick={minimize} title="Minimize">
       <Minus size={16} strokeWidth={2.8} />
-    </button>
-    <button type="button" class="win-btn maximize" onclick={maximize} title="Maximize / Restore">
-      <Maximize2 size={14} strokeWidth={2.5} />
     </button>
     <button type="button" class="win-btn close" onclick={close} title="Close">
       <span class="close-icon"><X size={16} strokeWidth={2.8} /></span>
@@ -105,8 +109,8 @@
     background:
       linear-gradient(180deg, rgba(139,92,246,0.06) 0%, transparent 100%),
       rgba(4, 7, 14, 0.95);
-    backdrop-filter: blur(40px);
-    -webkit-backdrop-filter: blur(40px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 
     /* Gradient border-bottom: purple → blue */
     border-bottom: 1px solid transparent;
@@ -283,28 +287,58 @@
   .tab-btn.active { color: #fff; }
 
   .tab-btn.execution.active {
-    background: rgba(59,130,246,0.16);
-    border-color: rgba(59,130,246,0.58);
+    background: rgba(59, 130, 246, 0.16);
+    border-color: rgba(59, 130, 246, 0.58);
     color: #bfdbfe;
-    box-shadow: 0 0 20px rgba(59,130,246,0.25), inset 0 1px 0 rgba(59,130,246,0.25);
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.25), inset 0 1px 0 rgba(59, 130, 246, 0.25);
   }
+  .tab-btn.execution.active :global(svg) {
+    color: #60a5fa;
+    filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.8));
+  }
+
   .tab-btn.arsenal.active {
-    background: rgba(139,92,246,0.16);
-    border-color: rgba(139,92,246,0.58);
+    background: rgba(139, 92, 246, 0.16);
+    border-color: rgba(139, 92, 246, 0.58);
     color: #ddd6fe;
-    box-shadow: 0 0 20px rgba(139,92,246,0.25), inset 0 1px 0 rgba(139,92,246,0.25);
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.25), inset 0 1px 0 rgba(139, 92, 246, 0.25);
   }
+  .tab-btn.arsenal.active :global(svg) {
+    color: #a78bfa;
+    filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.8));
+  }
+
   .tab-btn.breach.active {
-    background: rgba(239,68,68,0.16);
-    border-color: rgba(239,68,68,0.58);
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(239, 68, 68, 0.58);
     color: #fecaca;
-    box-shadow: 0 0 20px rgba(239,68,68,0.25), inset 0 1px 0 rgba(239,68,68,0.25);
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.25), inset 0 1px 0 rgba(239, 68, 68, 0.25);
   }
+  .tab-btn.breach.active :global(svg) {
+    color: #f87171;
+    filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.8));
+  }
+
   .tab-btn.archive.active {
-    background: rgba(16,185,129,0.14);
-    border-color: rgba(16,185,129,0.52);
-    color: #a7f3d0;
-    box-shadow: 0 0 20px rgba(16,185,129,0.22), inset 0 1px 0 rgba(16,185,129,0.22);
+    background: rgba(148, 163, 184, 0.16);
+    border-color: rgba(148, 163, 184, 0.58);
+    color: #f1f5f9;
+    box-shadow: 0 0 20px rgba(148, 163, 184, 0.24), inset 0 1px 0 rgba(148, 163, 184, 0.24);
+  }
+  .tab-btn.archive.active :global(svg) {
+    color: #cbd5e1;
+    filter: drop-shadow(0 0 6px rgba(148, 163, 184, 0.85));
+  }
+
+  .tab-btn.strikes.active {
+    background: rgba(245, 158, 11, 0.16);
+    border-color: rgba(245, 158, 11, 0.65);
+    color: #fef08a;
+    box-shadow: 0 0 22px rgba(245, 158, 11, 0.30), inset 0 1px 0 rgba(245, 158, 11, 0.30);
+  }
+  .tab-btn.strikes.active :global(svg) {
+    color: #fbbf24;
+    filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.85));
   }
 
   /* Breach pulse dot */
@@ -355,17 +389,6 @@
   }
   .win-btn.minimize:active { transform: scale(0.93); }
 
-  .win-btn.maximize {
-    background: linear-gradient(145deg, #2563eb, #1d4ed8);
-    color: #dbeafe;
-    box-shadow: 0 2px 12px rgba(37,99,235,0.50), inset 0 1px 0 rgba(255,255,255,0.18);
-  }
-  .win-btn.maximize:hover {
-    background: linear-gradient(145deg, #3b82f6, #2563eb);
-    box-shadow: 0 4px 20px rgba(59,130,246,0.65), inset 0 1px 0 rgba(255,255,255,0.25);
-    transform: scale(1.08);
-  }
-  .win-btn.maximize:active { transform: scale(0.93); }
 
   .win-btn.close {
     background: linear-gradient(145deg, #dc2626, #b91c1c);

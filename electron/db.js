@@ -2,9 +2,20 @@ import initSqlJs from 'sql.js';
 import path from 'path';
 import fs from 'fs';
 
+let BetterSqlite3 = null;
+try {
+  const mod = await import('better-sqlite3');
+  BetterSqlite3 = mod.default || mod;
+} catch (e) {
+  BetterSqlite3 = null;
+}
+
 let SQL = null;
 let dbInstance = null;
 let currentDbPath = null;
+let isNativeSqlite = false;
+let dbWrapperInstance = null;
+let dbSaveTimer = null;
 
 // Convert BigInt and other non-serializable types to plain values for IPC
 function sanitizeRow(obj) {
@@ -21,10 +32,30 @@ function sanitizeRow(obj) {
   return obj;
 }
 
-let dbSaveTimer = null;
+let isSavingDb = false;
+let pendingSaveDb = false;
+
+async function performAsyncDbSave() {
+  if (isNativeSqlite || !dbInstance || !currentDbPath || isSavingDb) return;
+  isSavingDb = true;
+  try {
+    const dir = path.dirname(currentDbPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const data = dbInstance.export();
+    await fs.promises.writeFile(currentDbPath, Buffer.from(data));
+  } catch (err) {
+    console.error('Error saving database to disk (async):', err);
+  } finally {
+    isSavingDb = false;
+    if (pendingSaveDb) {
+      pendingSaveDb = false;
+      performAsyncDbSave().catch(() => {});
+    }
+  }
+}
 
 function saveDbToDisk(immediate = false) {
-  if (!dbInstance || !currentDbPath) return;
+  if (isNativeSqlite || !dbInstance || !currentDbPath) return;
 
   if (immediate) {
     if (dbSaveTimer) {
@@ -42,10 +73,15 @@ function saveDbToDisk(immediate = false) {
     return;
   }
 
-  // Debounce non-critical writes by 500ms to save CPU & SSD wear
+  // Debounce non-critical writes by 500ms to save CPU & SSD wear, then write asynchronously
   if (dbSaveTimer) clearTimeout(dbSaveTimer);
   dbSaveTimer = setTimeout(() => {
-    saveDbToDisk(true);
+    dbSaveTimer = null;
+    if (isSavingDb) {
+      pendingSaveDb = true;
+    } else {
+      performAsyncDbSave().catch(() => {});
+    }
   }, 500);
 }
 
@@ -57,37 +93,57 @@ class SqlJsStatement {
 
   all(...params) {
     const stmt = this.db.prepare(this.sql);
-    let bindValues = params;
-    if (params.length === 1 && Array.isArray(params[0])) {
-      bindValues = params[0];
+    try {
+      let bindValues = params;
+      if (params.length === 1 && Array.isArray(params[0])) {
+        bindValues = params[0];
+      }
+      if (bindValues.length > 0) {
+        stmt.bind(bindValues.map(v => (v === undefined ? null : v)));
+      }
+      const result = [];
+      while (stmt.step()) {
+        result.push(sanitizeRow(stmt.getAsObject()));
+      }
+      return result;
+    } finally {
+      try { stmt.free(); } catch (e) {}
     }
-    if (bindValues.length > 0) {
-      stmt.bind(bindValues.map(v => (v === undefined ? null : v)));
-    }
-    const result = [];
-    while (stmt.step()) {
-      result.push(sanitizeRow(stmt.getAsObject()));
-    }
-    stmt.free();
-    return result;
   }
 
   get(...params) {
-    const rows = this.all(...params);
-    return rows.length > 0 ? rows[0] : undefined;
+    const stmt = this.db.prepare(this.sql);
+    try {
+      let bindValues = params;
+      if (params.length === 1 && Array.isArray(params[0])) {
+        bindValues = params[0];
+      }
+      if (bindValues.length > 0) {
+        stmt.bind(bindValues.map(v => (v === undefined ? null : v)));
+      }
+      if (stmt.step()) {
+        return sanitizeRow(stmt.getAsObject());
+      }
+      return undefined;
+    } finally {
+      try { stmt.free(); } catch (e) {}
+    }
   }
 
   run(...params) {
     const stmt = this.db.prepare(this.sql);
-    let bindValues = params;
-    if (params.length === 1 && Array.isArray(params[0])) {
-      bindValues = params[0];
+    try {
+      let bindValues = params;
+      if (params.length === 1 && Array.isArray(params[0])) {
+        bindValues = params[0];
+      }
+      if (bindValues.length > 0) {
+        stmt.bind(bindValues.map(v => (v === undefined ? null : v)));
+      }
+      stmt.step();
+    } finally {
+      try { stmt.free(); } catch (e) {}
     }
-    if (bindValues.length > 0) {
-      stmt.bind(bindValues.map(v => (v === undefined ? null : v)));
-    }
-    stmt.step();
-    stmt.free();
 
     const resId = this.db.exec('SELECT last_insert_rowid() as id;');
     const lastInsertRowid = (resId.length > 0 && resId[0].values.length > 0)
@@ -104,7 +160,7 @@ class SqlJsStatement {
   }
 }
 
-class DbWrapper {
+class SqlJsDbWrapper {
   constructor(db) {
     this.db = db;
   }
@@ -119,17 +175,11 @@ class DbWrapper {
   }
 }
 
-let dbWrapperInstance = null;
-
 /**
  * @param {string} dbFilePath - Full path to the .sqlite file (e.g. /some/dir/campaigns.sqlite)
  */
 export async function initDatabase(dbFilePath) {
   try {
-    if (!SQL) {
-      SQL = await initSqlJs();
-    }
-
     const dbDir = path.dirname(dbFilePath);
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
@@ -143,27 +193,49 @@ export async function initDatabase(dbFilePath) {
       dbWrapperInstance = null;
     }
 
-    let filebuffer = null;
-    if (fs.existsSync(currentDbPath)) {
+    // Attempt native better-sqlite3 first
+    if (BetterSqlite3) {
       try {
-        filebuffer = fs.readFileSync(currentDbPath);
-      } catch (readErr) {
-        console.error('Failed to read existing database file, creating fresh DB:', readErr);
-        filebuffer = null;
+        const nativeDb = new BetterSqlite3(dbFilePath);
+        nativeDb.pragma('foreign_keys = ON');
+        nativeDb.pragma('journal_mode = WAL');
+        dbInstance = nativeDb;
+        dbWrapperInstance = nativeDb;
+        isNativeSqlite = true;
+      } catch (nativeErr) {
+        console.warn('better-sqlite3 initialization failed, falling back to sql.js:', nativeErr.message);
+        isNativeSqlite = false;
+        dbInstance = null;
       }
     }
 
-    try {
-      dbInstance = filebuffer ? new SQL.Database(filebuffer) : new SQL.Database();
-    } catch (dbErr) {
-      console.error('Database file corrupted or unreadable, re-initializing fresh database:', dbErr);
-      dbInstance = new SQL.Database();
+    // Fallback to sql.js
+    if (!dbInstance) {
+      isNativeSqlite = false;
+      if (!SQL) {
+        SQL = await initSqlJs();
+      }
+
+      let filebuffer = null;
+      if (fs.existsSync(currentDbPath)) {
+        try {
+          filebuffer = fs.readFileSync(currentDbPath);
+        } catch (readErr) {
+          console.error('Failed to read existing database file, creating fresh DB:', readErr);
+          filebuffer = null;
+        }
+      }
+
+      try {
+        dbInstance = filebuffer ? new SQL.Database(filebuffer) : new SQL.Database();
+      } catch (dbErr) {
+        console.error('Database file corrupted or unreadable, re-initializing fresh database:', dbErr);
+        dbInstance = new SQL.Database();
+      }
+
+      dbInstance.run('PRAGMA foreign_keys = ON;');
+      dbWrapperInstance = new SqlJsDbWrapper(dbInstance);
     }
-
-    dbInstance.run('PRAGMA foreign_keys = ON;');
-    dbInstance.run('PRAGMA optimize;');
-
-    dbWrapperInstance = new DbWrapper(dbInstance);
 
     dbWrapperInstance.exec(`
       CREATE TABLE IF NOT EXISTS Tasks (
@@ -181,7 +253,8 @@ export async function initDatabase(dbFilePath) {
         reschedule_2 TEXT,
         ended_date TEXT,
         end_note TEXT,
-        days_spent INTEGER
+        days_spent INTEGER,
+        is_breached_extracted INTEGER DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS Tags (
@@ -200,12 +273,32 @@ export async function initDatabase(dbFilePath) {
         FOREIGN KEY (task_id) REFERENCES Tasks(id) ON DELETE CASCADE
       );
 
-      DROP TABLE IF EXISTS Chronos;
+      CREATE TABLE IF NOT EXISTS Strikes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        execution_date TEXT NOT NULL,
+        priority TEXT DEFAULT 'Medium',
+        status TEXT DEFAULT 'STANDBY',
+        notes TEXT,
+        subtask_id INTEGER,
+        reschedule_count INTEGER DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tags_task_id ON Tags(task_id);
+      CREATE INDEX IF NOT EXISTS idx_tags_tag_name ON Tags(tag_name);
+      CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON Subtasks(task_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_state ON Tasks(state);
+      CREATE INDEX IF NOT EXISTS idx_strikes_execution_date ON Strikes(execution_date);
+      CREATE INDEX IF NOT EXISTS idx_strikes_status ON Strikes(status);
+      CREATE INDEX IF NOT EXISTS idx_strikes_subtask_id ON Strikes(subtask_id);
     `);
 
-    // Schema migrations for existing databases
-    try { dbWrapperInstance.exec(`ALTER TABLE Tasks ADD COLUMN modification_date TEXT;`); } catch (e) {}
-    try { dbWrapperInstance.exec(`ALTER TABLE Tasks ADD COLUMN days_spent INTEGER;`); } catch (e) {}
+    try {
+      dbWrapperInstance.exec('ALTER TABLE Tasks ADD COLUMN is_breached_extracted INTEGER DEFAULT 0;');
+    } catch (e) {
+      // Column already exists
+    }
 
     return { success: true, dbPath: currentDbPath };
   } catch (err) {
@@ -222,6 +315,8 @@ export function getDb() {
 }
 
 export function flushDbToDisk() {
-  saveDbToDisk(true);
+  if (!isNativeSqlite) {
+    saveDbToDisk(true);
+  }
 }
 

@@ -1,6 +1,6 @@
 <script>
   import { store } from '../../../lib/store.svelte.js';
-  import { getFormattedDate } from '../../../lib/ChronosMath.js';
+  import { ChronosMath, getFormattedDate } from '../../../lib/ChronosMath.js';
   import { 
     Brain, FileText, Rocket, Edit2, Plus, ChevronUp,
     CheckSquare, Clock, Square, Trash2, Tag as TagIcon, 
@@ -70,23 +70,17 @@
       yyyy = parseInt(parts[0], 10);
       mm = parseInt(parts[1], 10) - 1;
       dd = parseInt(parts[2], 10);
-    } else if (parts[2].length === 4) { // DD-MM-YYYY
+    } else { // DD-MM-YYYY
       dd = parseInt(parts[0], 10);
       mm = parseInt(parts[1], 10) - 1;
       yyyy = parseInt(parts[2], 10);
-    } else {
-      return false;
     }
 
-    if (isNaN(dd) || isNaN(mm) || isNaN(yyyy)) return false;
-    if (mm < 0 || mm > 11 || dd < 1 || dd > 31) return false;
+    if (!ChronosMath.isValidCalendarDate(dd, mm, yyyy)) return false;
 
-    const d = new Date(yyyy, mm, dd);
-    if (isNaN(d.getTime())) return false;
-
-    // Must be today or future date
+    const d = new Date(yyyy, mm, dd, 0, 0, 0, 0);
     const now = new Date();
-    const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     return d.getTime() >= todayZero.getTime();
   }
 
@@ -97,9 +91,16 @@
     const parts = trimmed.split('-');
     if (parts.length !== 3) return trimmed;
     if (parts[0].length === 4) {
-      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      const dd = String(parseInt(parts[2], 10)).padStart(2, '0');
+      const mm = String(parseInt(parts[1], 10)).padStart(2, '0');
+      const yyyy = parts[0];
+      return `${dd}-${mm}-${yyyy}`;
+    } else {
+      const dd = String(parseInt(parts[0], 10)).padStart(2, '0');
+      const mm = String(parseInt(parts[1], 10)).padStart(2, '0');
+      const yyyy = parts[2];
+      return `${dd}-${mm}-${yyyy}`;
     }
-    return trimmed;
   }
 
   function getDaysFromToday(dateStr) {
@@ -136,6 +137,7 @@
       const res = await window.electronAPI.getSubtasks(currentTask.id);
       if (res.success) {
         subtasks = res.subtasks || [];
+        store.updateTaskSubtaskStats(currentTask.id, subtasks);
       }
     } catch (e) {
       console.error('Error loading subtasks:', e);
@@ -152,18 +154,27 @@
   }
 
   function scrollSubtaskIfHighlighted(node, isHighlighted) {
+    let timer = null;
     if (isHighlighted) {
-      setTimeout(() => {
-        node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      timer = setTimeout(() => {
+        if (node && node.isConnected) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
       }, 60);
     }
     return {
       update(nextState) {
+        if (timer) clearTimeout(timer);
         if (nextState) {
-          setTimeout(() => {
-            node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          timer = setTimeout(() => {
+            if (node && node.isConnected) {
+              node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
           }, 60);
         }
+      },
+      destroy() {
+        if (timer) clearTimeout(timer);
       }
     };
   }
@@ -204,15 +215,19 @@
     }
   }
 
-  // 3-STAGE SUBTASK CYCLE: Initiated -> Doing -> Completed -> Initiated
+  // 3-STAGE SUBTASK CYCLE: Initiated -> Doing -> Completed (Permanently Locked on Completed)
   async function cycleSubtaskStatus(subtask) {
+    // Once Completed, subtask state is final and locked
+    if (subtask.status === 'Completed') {
+      store.showToast('Tactical Lock: Completed subtask is finalized and cannot be altered.', 'warning');
+      return;
+    }
+
     let nextStatus = 'Initiated';
     if (subtask.status === 'Initiated' || !subtask.status) {
       nextStatus = 'Doing';
     } else if (subtask.status === 'Doing') {
       nextStatus = 'Completed';
-    } else {
-      nextStatus = 'Initiated';
     }
 
     try {
@@ -223,6 +238,9 @@
       if (res.success) {
         triggerSubtaskHighlight(subtask.id);
         await loadSubtasks();
+        if (currentTask && currentTask.id) {
+          store.updateTaskSubtaskStats(currentTask.id, subtasks);
+        }
         store.showToast(`Subtask stage: ${nextStatus.toUpperCase()}`, 'info');
       }
     } catch (e) {
@@ -269,6 +287,9 @@
       const res = await window.electronAPI.deleteSubtask(subtaskId);
       if (res.success) {
         subtasks = subtasks.filter(s => s.id !== subtaskId);
+        if (currentTask && currentTask.id) {
+          store.updateTaskSubtaskStats(currentTask.id, subtasks);
+        }
         store.showToast('Subtask deleted.', 'info');
       }
     } catch (e) {
@@ -276,14 +297,21 @@
     }
   }
 
-  function moveSubtaskUp(index) {
-    if (index <= 0) return;
+  async function moveSubtaskUp(index) {
+    if (index <= 0 || !currentTask || !currentTask.id) return;
     const updated = [...subtasks];
     const temp = updated[index - 1];
     updated[index - 1] = updated[index];
     updated[index] = temp;
     subtasks = updated;
     triggerSubtaskHighlight(subtasks[index - 1].id);
+
+    try {
+      const subtaskIds = subtasks.map(s => s.id);
+      await window.electronAPI.reorderSubtasks({ taskId: currentTask.id, subtaskIds });
+    } catch (e) {
+      console.error('Failed to persist subtask reorder:', e);
+    }
   }
 
   function openDeploy() {
@@ -365,7 +393,7 @@
 <!-- Full Screen Modal Overlay (Strictly below 64px Top Navbar) -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="modal-overlay" onclick={onClose}>
+<div class="modal-overlay">
   <!-- EXPANDED 1240px × 740px 3-COLUMN WINDOW CANVAS -->
   <div class="modal-window-expanded" onclick={(e) => e.stopPropagation()}>
     
@@ -439,7 +467,19 @@
             type="text" 
             placeholder="Enter new subtask title..." 
             bind:value={newSubtaskTitle}
-            onkeydown={(e) => e.key === 'Enter' && addSubtask(e)}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addSubtask(e);
+              } else if (e.key === 'Escape') {
+                e.stopPropagation();
+                if (newSubtaskTitle) {
+                  newSubtaskTitle = '';
+                } else {
+                  subtaskInputRef?.blur();
+                }
+              }
+            }}
             class="subtask-input"
           />
           <button 
@@ -620,7 +660,7 @@
 {#if isDeployOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="deploy-modal-overlay" onclick={() => isDeployOpen = false}>
+  <div class="deploy-modal-overlay">
     <div class="deploy-modal-card" onclick={(e) => e.stopPropagation()}>
       <div class="deploy-card-header">
         <div class="deploy-title-wrap">
@@ -703,7 +743,7 @@
     top: 64px; left: 0; right: 0; bottom: 0;
     z-index: 1000;
     background: rgba(4, 7, 13, 0.88);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(8px);
     display: flex; align-items: center; justify-content: center;
     padding: 20px;
     animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -745,11 +785,16 @@
   .header-title-text { font-size: 13px; font-weight: 900; letter-spacing: 0.10em; color: #f3e8ff; word-spacing: 0.04em; }
 
   .btn-close-window {
-    background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.10);
-    color: var(--text-muted); border-radius: 50%; width: 34px; height: 34px;
-    display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease;
+    width: 36px; height: 36px; border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.06); border: 1.5px solid rgba(255, 255, 255, 0.14);
+    color: #94a3b8; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
-  .btn-close-window:hover { background: rgba(239, 68, 68, 0.2); color: #f87171; border-color: rgba(239, 68, 68, 0.4); }
+  .btn-close-window:hover {
+    background: rgba(239, 68, 68, 0.25); color: #fca5a5; border-color: rgba(239, 68, 68, 0.7);
+    transform: rotate(90deg) scale(1.08); box-shadow: 0 0 16px rgba(239, 68, 68, 0.45);
+  }
 
   /* 3-Column Body Grid */
   .window-body-grid { flex: 1; display: grid; grid-template-columns: 310px 1fr 255px; min-height: 0; }
@@ -827,7 +872,7 @@
   .subtasks-counter { font-size: 11px; font-weight: 900; color: #c4b5fd; letter-spacing: 0.06em; }
 
   .subtask-add-row { display: flex; gap: 8px; }
-  .subtask-input { flex: 1; padding: 10px 14px; font-size: 13px; font-weight: 700; background: rgba(6, 10, 18, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; color: #ffffff; outline: none; }
+  .subtask-input { flex: 1; padding: 13px 18px; font-size: 15px; font-weight: 800; word-spacing: 0.12em; letter-spacing: 0.03em; background: rgba(6, 10, 18, 0.95); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 12px; color: #ffffff; outline: none; }
   .subtask-input:focus { border-color: rgba(139, 92, 246, 0.65); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18); }
   .btn-add-subtask { display: flex; align-items: center; gap: 6px; padding: 10px 16px; font-size: 11.5px; font-weight: 900; letter-spacing: 0.06em; color: #ffffff; background: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(99, 102, 241, 0.3)); border: 1px solid rgba(139, 92, 246, 0.55); border-radius: 12px; cursor: pointer; }
   .btn-add-subtask:hover:not(:disabled) { background: linear-gradient(135deg, rgba(139, 92, 246, 0.6), rgba(99, 102, 241, 0.5)); }
@@ -875,22 +920,49 @@
 
   /* Direct Inline Title Input (No separate wrapper box!) */
   .inline-row-input {
-    flex: 1; background: rgba(6, 10, 18, 0.95); border: 1.5px solid #8b5cf6;
-    border-radius: 8px; padding: 6px 12px; font-size: 15px; font-weight: 800;
-    color: #ffffff; outline: none; box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+    flex: 1; background: rgba(6, 10, 18, 0.95); border: 1.5px solid rgba(139, 92, 246, 0.7);
+    border-radius: 9999px; padding: 6px 16px; font-size: 13.5px; font-weight: 700;
+    color: #ffffff; outline: none; box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
   }
 
-  .subtask-actions { display: flex; align-items: center; gap: 4px; }
+  .subtask-actions { display: flex; align-items: center; gap: 6px; }
   .subtask-edit-btn, .subtask-order-btn, .subtask-delete-btn, .subtask-save-btn, .subtask-cancel-btn {
-    width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center;
-    justify-content: center; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.10);
-    color: var(--text-muted); cursor: pointer; transition: all 0.15s ease;
+    width: 30px; height: 30px; border-radius: 50% !important; display: flex; align-items: center;
+    justify-content: center; background: rgba(255, 255, 255, 0.05); border: 1.5px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-muted); cursor: pointer; transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   }
-  .subtask-edit-btn:hover { background: rgba(96, 165, 250, 0.25); color: #60a5fa; }
-  .subtask-save-btn { background: rgba(16, 185, 129, 0.25); border-color: rgba(16, 185, 129, 0.5); color: #34d399; }
-  .subtask-cancel-btn { background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.5); color: #f87171; }
-  .subtask-order-btn:hover:not(:disabled) { background: rgba(139, 92, 246, 0.25); color: #c4b5fd; }
-  .subtask-delete-btn:hover { background: rgba(239, 68, 68, 0.25); color: #f87171; }
+  .subtask-save-btn {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.25)) !important;
+    color: #34d399 !important; border-color: rgba(52, 211, 153, 0.65) !important;
+  }
+  .subtask-save-btn:hover {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.65), rgba(5, 150, 105, 0.45)) !important;
+    color: #ffffff !important; border-color: #34d399 !important; transform: scale(1.12);
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.6) !important;
+  }
+  .subtask-cancel-btn {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.35), rgba(220, 38, 38, 0.25)) !important;
+    color: #f87171 !important; border-color: rgba(248, 113, 113, 0.65) !important;
+  }
+  .subtask-cancel-btn:hover {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.65), rgba(220, 38, 38, 0.45)) !important;
+    color: #ffffff !important; border-color: #ef4444 !important; transform: scale(1.12) rotate(90deg);
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.6) !important;
+  }
+  .subtask-edit-btn:hover {
+    background: rgba(96, 165, 250, 0.25); color: #60a5fa; border-color: rgba(96, 165, 250, 0.65); transform: scale(1.1);
+    box-shadow: 0 0 12px rgba(96, 165, 250, 0.4);
+  }
+  .subtask-order-btn:hover:not(:disabled) {
+    background: rgba(139, 92, 246, 0.25); color: #c4b5fd; border-color: rgba(139, 92, 246, 0.65); transform: scale(1.1) translateY(-1px);
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
+  }
+  .subtask-order-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .subtask-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.25); color: #f87171; border-color: rgba(239, 68, 68, 0.65); transform: scale(1.1);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+  }
 
   /* Compact Meta Info Grid in Portion 1 */
   .meta-info-grid { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
@@ -923,7 +995,7 @@
   .btn-deploy:hover { background: linear-gradient(135deg, rgba(139, 92, 246, 0.7), rgba(99, 102, 241, 0.6)); }
 
   /* DEPLOY MODAL OVERLAY (580px 2X LARGE DARK THEMED DIALOG) */
-  .deploy-modal-overlay { position: fixed; top: 64px; left: 0; right: 0; bottom: 0; z-index: 50000; background: rgba(4, 7, 13, 0.92); backdrop-filter: blur(24px); display: flex; align-items: center; justify-content: center; }
+  .deploy-modal-overlay { position: fixed; top: 64px; left: 0; right: 0; bottom: 0; z-index: 50000; background: rgba(4, 7, 13, 0.92); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; }
   .deploy-modal-card { width: 580px; background: rgba(14, 20, 33, 0.98); border: 1.5px solid rgba(139, 92, 246, 0.55); border-radius: 24px; padding: 32px; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 28px 72px rgba(0, 0, 0, 0.90), 0 0 40px rgba(139, 92, 246, 0.25); }
   .deploy-card-header { display: flex; align-items: center; justify-content: space-between; }
   .deploy-title-wrap { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 900; color: #f3e8ff; letter-spacing: 0.04em; word-spacing: 0.04em; }

@@ -1,6 +1,6 @@
 {
   "name": "campaigns",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Tactical Task Manager Command Center",
   "main": "electron/main.js",
   "type": "module",
@@ -41,14 +41,22 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "!**/*.sqlite*",
+      "!**/*.db*",
+      "!make-ico.js",
+      "!build-icon.js",
+      "!render-icon.js",
       "!Development.md",
-      "!docs/*"
+      "!Release-*.md",
+      "!docs/*",
+      "!scratch/*"
     ],
     "directories": {
       "output": "release"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -57,7 +65,13 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Campaigns",
       "uninstallDisplayName": "Campaigns Uninstaller",
-      "displayLanguageSelector": false
+      "displayLanguageSelector": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     }
   }
 }

@@ -6,7 +6,7 @@
     FileText, CheckCircle2, XCircle, Clock, 
     CheckSquare, Square, Tag as TagIcon, X, 
     ListTodo, GitCommit, ShieldCheck, ShieldAlert,
-    AlertCircle
+    AlertCircle, Zap, ChevronUp, ArrowRight, Calendar
   } from 'lucide-svelte';
 
   let { task = null, onClose = () => {} } = $props();
@@ -35,12 +35,39 @@
           ? ChronosMath.daysSpent(currentTask.initiated_at, currentTask.ended_date)
           : 1)
   );
-  let wasBreachedBeforeArchive = $derived(taskRescheduleCount > 0 || !!taskReschedule1 || !!taskReschedule2);
+  let wasBreachedBeforeArchive = $derived((currentTask.is_breached_extracted === 1 || currentTask.is_breached_extracted === true) && taskStage === 'Aborted');
 
   // ── Read-only Subtasks state ───────────────────────────────
   let subtasks        = $state([]);
   let completedCount  = $derived(subtasks.filter(s => s.status === 'Completed').length);
   let focusedSubtaskIndex = $state(-1);
+
+  // Map of subtask_id -> array of linked strike directives
+  let linkedStrikesMap = $derived.by(() => {
+    const map = {};
+    for (const s of (store.strikes || [])) {
+      if (s.subtask_id != null) {
+        const key = Number(s.subtask_id);
+        if (!map[key]) map[key] = [];
+        map[key].push(s);
+      }
+    }
+    return map;
+  });
+
+  // Track expanded subtask IDs
+  let expandedSubtaskIds = $state(new Set());
+
+  function toggleSubtaskExpand(subtaskId, e) {
+    if (e) e.stopPropagation();
+    const next = new Set(expandedSubtaskIds);
+    if (next.has(subtaskId)) {
+      next.delete(subtaskId);
+    } else {
+      next.add(subtaskId);
+    }
+    expandedSubtaskIds = next;
+  }
 
   $effect(() => {
     if (currentTask && currentTask.id) loadSubtasks();
@@ -107,7 +134,7 @@
 <!-- Full Screen Modal Overlay (Strictly below 64px Top Navbar) -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="modal-overlay" onclick={onClose}>
+<div class="modal-overlay">
   <!-- 1240px × 740px 3-COLUMN ARCHIVE WINDOW -->
   <div class="modal-window-expanded" onclick={(e) => e.stopPropagation()}>
 
@@ -251,9 +278,58 @@
                   {/if}
                 </div>
 
-                <!-- Title -->
-                <span class="subtask-title-text">{subtask.title}</span>
+                <!-- Title & Strikes Toggle -->
+                <div class="subtask-title-wrap">
+                  <span class="subtask-title-text">{subtask.title}</span>
+
+                  <!-- Concise Strike Summary Badge (Click to toggle expanded view) -->
+                  {#if linkedStrikesMap[subtask.id] && linkedStrikesMap[subtask.id].length > 0}
+                    {@const strikes = linkedStrikesMap[subtask.id]}
+                    {@const isExpanded = expandedSubtaskIds.has(subtask.id)}
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <button 
+                      type="button"
+                      class="subtask-strikes-toggle-btn"
+                      class:is-expanded={isExpanded}
+                      onclick={(e) => toggleSubtaskExpand(subtask.id, e)}
+                      title={isExpanded ? 'Click to collapse linked strikes' : 'Click to expand linked strikes'}
+                    >
+                      <Zap size={12} class="toggle-zap-icon" />
+                      <span>{strikes.length} Strike{strikes.length > 1 ? 's' : ''}</span>
+                      <ChevronUp size={12} class="toggle-chevron {isExpanded ? '' : 'rotated'}" />
+                    </button>
+                  {/if}
+                </div>
               </div>
+
+              <!-- Clean Nested Expandable Strikes Panel -->
+              {#if linkedStrikesMap[subtask.id] && linkedStrikesMap[subtask.id].length > 0 && expandedSubtaskIds.has(subtask.id)}
+                <div class="nested-strikes-container">
+                  <div class="nested-strikes-list">
+                    {#each linkedStrikesMap[subtask.id] as strike (strike.id)}
+                      <!-- svelte-ignore a11y_click_events_have_key_events -->
+                      <!-- svelte-ignore a11y_no_static_element_interactions -->
+                      <div 
+                        class="nested-strike-item {(strike.status || 'unknown').toLowerCase()}"
+                        onclick={() => { onClose(); store.navigateToStrike(strike.id); }}
+                        title="Click to jump to Strike directive in STRIKES tab"
+                      >
+                        <div class="nested-strike-left">
+                          <Zap size={13} class="nested-zap {(strike.status || 'unknown').toLowerCase()}" />
+                          <span class="nested-strike-title">{strike.title}</span>
+                        </div>
+                        <div class="nested-strike-right">
+                          <span class="nested-strike-date"><Calendar size={11} /> {strike.execution_date}</span>
+                          <span class="nested-strike-priority-badge badge-{(strike.priority || 'Medium').toLowerCase()}">{(strike.priority || 'Medium').toUpperCase()}</span>
+                          <span class="nested-strike-status-badge {(strike.status || 'unknown').toLowerCase()}">{strike.status}</span>
+                          <ArrowRight size={13} class="nested-jump-arrow" />
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
             {/each}
           {/if}
         </div>
@@ -365,7 +441,7 @@
     position: fixed; top: 64px; bottom: 0; left: 0; right: 0;
     z-index: 8000;
     background: rgba(4, 7, 14, 0.84);
-    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     display: flex; align-items: center; justify-content: center; padding: 24px;
     animation: fadeIn 0.18s ease-out;
   }
@@ -375,7 +451,7 @@
   .modal-window-expanded {
     width: 1240px; height: 740px; max-width: 95vw; max-height: calc(100vh - 80px);
     background: rgba(10, 15, 26, 0.98);
-    border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 24px;
+    border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 26px;
     box-shadow: 0 28px 72px rgba(0,0,0,0.95), 0 0 40px rgba(139,92,246,0.20);
     display: flex; flex-direction: column; overflow: hidden;
     animation: windowScale 0.22s cubic-bezier(0.16, 1, 0.3, 1);
@@ -405,12 +481,16 @@
   .header-title-text.victory { color: #a7f3d0; }
   .header-title-text.aborted { color: #fca5a5; }
   .btn-close-window {
-    width: 34px; height: 34px; border-radius: 50%;
-    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.10);
-    color: var(--text-muted); display: flex; align-items: center; justify-content: center;
-    cursor: pointer; transition: all 0.15s ease;
+    width: 36px; height: 36px; border-radius: 50% !important;
+    background: rgba(255,255,255,0.06); border: 1.5px solid rgba(255,255,255,0.14);
+    color: #94a3b8; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
-  .btn-close-window:hover { background: rgba(239,68,68,0.22); color: #f87171; border-color: rgba(239,68,68,0.40); }
+  .btn-close-window:hover {
+    background: rgba(239, 68, 68, 0.25); color: #fca5a5; border-color: rgba(239, 68, 68, 0.7);
+    transform: rotate(90deg) scale(1.08); box-shadow: 0 0 16px rgba(239, 68, 68, 0.45);
+  }
 
   /* ── 3-COLUMN BODY GRID ── */
   .window-body-grid {
@@ -561,6 +641,89 @@
   .stage-pill-badge.completed { color: #a7f3d0; background: rgba(52,211,153,0.2); border: 1px solid rgba(52,211,153,0.4); }
   .stage-pill-badge.doing     { color: #fde68a; background: rgba(245,158,11,0.2); border: 1px solid rgba(245,158,11,0.4); }
   .stage-pill-badge.initiated { color: var(--text-muted); background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); }
+
+  .subtask-title-wrap {
+    flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  }
+
+  .subtask-strikes-toggle-btn {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 6px;
+    font-size: 10.5px; font-weight: 900; color: #a78bfa; background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.40); cursor: pointer; transition: all 0.15s ease;
+    width: fit-content; margin-top: 3px;
+  }
+  .subtask-strikes-toggle-btn:hover, .subtask-strikes-toggle-btn.is-expanded {
+    background: rgba(139, 92, 246, 0.3); border-color: rgba(168, 85, 247, 0.75);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3); color: #ffffff;
+  }
+  :global(.toggle-zap-icon) { color: #a78bfa; }
+  :global(.toggle-chevron) { color: #a78bfa; transition: transform 0.2s ease; }
+  :global(.toggle-chevron.rotated) { transform: rotate(180deg); }
+
+  /* NESTED EXPANDABLE STRIKES LIST UI */
+  .nested-strikes-container {
+    margin-top: -3px; margin-left: 28px; padding: 10px 14px;
+    background: rgba(6, 10, 18, 0.95); border: 1.5px solid rgba(139, 92, 246, 0.35);
+    border-radius: 12px; display: flex; flex-direction: column; gap: 8px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.5), 0 4px 15px rgba(0,0,0,0.4);
+    animation: nestedSlideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes nestedSlideDown {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .nested-strikes-header {
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 5px;
+  }
+  .nested-header-title { font-size: 9.5px; font-weight: 900; color: #a78bfa; letter-spacing: 0.08em; }
+
+  .nested-strikes-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .nested-strike-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 7px 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .nested-strike-item:hover {
+    background: rgba(139, 92, 246, 0.18); border-color: rgba(168, 85, 247, 0.5);
+    transform: translateX(3px); box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  }
+
+  .nested-strike-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  :global(.nested-zap) { color: #f59e0b; flex-shrink: 0; }
+  :global(.nested-zap.neutralized) { color: #34d399; }
+  :global(.nested-zap.engaged) { color: #60a5fa; }
+  :global(.nested-zap.pending) { color: #ef4444; }
+
+  .nested-strike-title {
+    font-size: 12.5px; font-weight: 700; color: #ffffff;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .nested-strike-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .nested-strike-date { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: #94a3b8; }
+
+  .nested-strike-priority-badge {
+    font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.04em;
+    color: #fde047; background: rgba(253, 224, 71, 0.15); border: 1px solid rgba(253, 224, 71, 0.35);
+  }
+  .nested-strike-priority-badge.badge-high { color: #fca5a5; background: rgba(239, 68, 68, 0.18); border-color: rgba(239, 68, 68, 0.45); }
+  .nested-strike-priority-badge.badge-low { color: #93c5fd; background: rgba(59, 130, 246, 0.18); border-color: rgba(59, 130, 246, 0.45); }
+
+  .nested-strike-status-badge {
+    font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.04em;
+    color: #f59e0b; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4);
+  }
+  .nested-strike-status-badge.neutralized { color: #a7f3d0; background: rgba(52, 211, 153, 0.2); border-color: rgba(52, 211, 153, 0.4); }
+  .nested-strike-status-badge.engaged { color: #93c5fd; background: rgba(96, 165, 250, 0.2); border-color: rgba(96, 165, 250, 0.4); }
+  .nested-strike-status-badge.pending { color: #fca5a5; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); }
+  .nested-strike-status-badge.aborted { color: #94a3b8; background: rgba(100, 116, 139, 0.2); border-color: rgba(100, 116, 139, 0.4); }
+
+  :global(.nested-jump-arrow) { color: #a78bfa; transition: transform 0.15s ease; opacity: 0.8; }
+  .nested-strike-item:hover :global(.nested-jump-arrow) { transform: translateX(3px); opacity: 1; color: #ffffff; }
 
   .subtask-title-text {
     flex: 1; font-size: 14px; font-weight: 800; letter-spacing: 0.01em;
