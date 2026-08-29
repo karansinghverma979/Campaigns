@@ -202,8 +202,9 @@ export async function initDatabase(dbFilePath) {
         dbInstance = nativeDb;
         dbWrapperInstance = nativeDb;
         isNativeSqlite = true;
+        console.log('⚡ [DB Engine] Native SQLite (better-sqlite3) active in WAL mode:', dbFilePath);
       } catch (nativeErr) {
-        console.warn('better-sqlite3 initialization failed, falling back to sql.js:', nativeErr.message);
+        console.warn('⚠️ [DB Engine] better-sqlite3 initialization failed, falling back to sql.js:', nativeErr.message);
         isNativeSqlite = false;
         dbInstance = null;
       }
@@ -282,7 +283,8 @@ export async function initDatabase(dbFilePath) {
         status TEXT DEFAULT 'STANDBY',
         notes TEXT,
         subtask_id INTEGER,
-        reschedule_count INTEGER DEFAULT 0
+        reschedule_count INTEGER DEFAULT 0,
+        recurrence_id TEXT DEFAULT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_tags_task_id ON Tags(task_id);
@@ -294,10 +296,24 @@ export async function initDatabase(dbFilePath) {
       CREATE INDEX IF NOT EXISTS idx_strikes_subtask_id ON Strikes(subtask_id);
     `);
 
+    // Migrations for existing databases MUST happen before creating indexes on migrated columns
     try {
       dbWrapperInstance.exec('ALTER TABLE Tasks ADD COLUMN is_breached_extracted INTEGER DEFAULT 0;');
     } catch (e) {
       // Column already exists
+    }
+
+    try {
+      dbWrapperInstance.exec('ALTER TABLE Strikes ADD COLUMN recurrence_id TEXT DEFAULT NULL;');
+    } catch (e) {
+      // Column already exists
+    }
+
+    // Now safe to create index on recurrence_id
+    try {
+      dbWrapperInstance.exec('CREATE INDEX IF NOT EXISTS idx_strikes_recurrence_id ON Strikes(recurrence_id);');
+    } catch (e) {
+      // Index already exists or not supported
     }
 
     return { success: true, dbPath: currentDbPath };

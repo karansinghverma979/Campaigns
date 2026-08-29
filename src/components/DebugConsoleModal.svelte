@@ -154,6 +154,7 @@
 
   .log-body {
     flex: 1;
+    min-height: 0;
     padding: 16px;
     overflow-y: auto;
     font-size: 12px;
@@ -162,6 +163,9 @@
     flex-direction: column;
     gap: 6px;
   }
+  .log-body::-webkit-scrollbar { width: 6px; }
+  .log-body::-webkit-scrollbar-thumb { background: rgba(251, 191, 36, 0.35); border-radius: 99px; }
+  .log-body::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
 
   .empty-log {
     color: var(--text-muted);

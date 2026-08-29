@@ -19,12 +19,5 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true
-  },
-  // Pre-bundle fontsource imports to avoid deep module resolution on every HMR
-  optimizeDeps: {
-    include: [
-      '@fontsource/outfit',
-      '@fontsource/inter'
-    ]
   }
 });

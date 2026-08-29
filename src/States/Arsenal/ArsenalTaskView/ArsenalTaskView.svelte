@@ -4,7 +4,7 @@
   import { 
     Brain, FileText, Rocket, Edit2, Plus, ChevronUp,
     CheckSquare, Clock, Square, Trash2, Tag as TagIcon, 
-    X, Calendar, Calendar as CalendarIcon, ListTodo, GitCommit, Check, AlertTriangle, CheckCircle2
+    X, Calendar, Calendar as CalendarIcon, ListTodo, GitCommit, Check, AlertTriangle, CheckCircle2, XOctagon
   } from 'lucide-svelte';
 
   let { task = null, side = 'right', onClose = () => {}, onOpenEditModal = () => {} } = $props();
@@ -282,7 +282,43 @@
     }
   }
 
+  async function failSubtask(subtaskId) {
+    const subtask = subtasks.find(s => s.id === subtaskId);
+    if (!subtask) return;
+    if (subtask.status === 'Completed') {
+      store.showToast('Tactical Lock: Completed subtask is finished and cannot be marked Failed.', 'warning');
+      return;
+    }
+    if (subtask.status === 'Failed') {
+      store.showToast('Tactical Lock: Subtask is already marked FAILED.', 'warning');
+      return;
+    }
+    try {
+      const res = await window.electronAPI.updateSubtaskStatus({
+        subtaskId,
+        status: 'Failed'
+      });
+      if (res.success) {
+        triggerSubtaskHighlight(subtaskId);
+        await loadSubtasks();
+        if (currentTask && currentTask.id) {
+          store.updateTaskSubtaskStats(currentTask.id, subtasks);
+        }
+        store.showToast('⛔ Subtask marked FAILED.', 'warning');
+      } else {
+        store.showToast('Failed to mark subtask failed: ' + res.error, 'danger');
+      }
+    } catch (e) {
+      store.showToast('Error: ' + e.message, 'danger');
+    }
+  }
+
   async function deleteSubtask(subtaskId) {
+    const subtask = subtasks.find(s => s.id === subtaskId);
+    if (subtask && subtask.status && subtask.status !== 'Initiated') {
+      store.showToast('Tactical Lock: Only Initiated subtasks can be deleted. Non-initiated subtasks can only be marked Failed.', 'warning');
+      return;
+    }
     try {
       const res = await window.electronAPI.deleteSubtask(subtaskId);
       if (res.success) {
@@ -517,6 +553,9 @@
                   {:else if subtask.status === 'Doing'}
                     <Clock size={17} class="status-icon doing" />
                     <span class="stage-pill-badge doing">DOING</span>
+                  {:else if subtask.status === 'Failed'}
+                    <XOctagon size={17} class="status-icon failed" />
+                    <span class="stage-pill-badge failed">FAILED</span>
                   {:else}
                     <Square size={17} class="status-icon initiated" />
                     <span class="stage-pill-badge initiated">INITIATED</span>
@@ -547,7 +586,7 @@
                   </span>
                 {/if}
 
-                <!-- Actions: Edit/Save/Cancel, Move Up & Delete -->
+                <!-- Actions: Edit/Save/Cancel, Move Up & Delete/Fail -->
                 <div class="subtask-actions">
                   {#if editingSubtaskId === subtask.id}
                     <button type="button" class="subtask-save-btn" onclick={() => saveSubtaskTitle(subtask.id)} title="Save Title">
@@ -575,14 +614,34 @@
                       <ChevronUp size={15} />
                     </button>
 
-                    <button 
-                      type="button" 
-                      class="subtask-delete-btn" 
-                      onclick={() => deleteSubtask(subtask.id)}
-                      title="Delete Subtask"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {#if subtask.status === 'Initiated' || !subtask.status}
+                      <button 
+                        type="button" 
+                        class="subtask-delete-btn" 
+                        onclick={() => deleteSubtask(subtask.id)}
+                        title="Delete Subtask"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    {:else if subtask.status === 'Doing'}
+                      <button 
+                        type="button" 
+                        class="subtask-fail-btn" 
+                        onclick={() => failSubtask(subtask.id)}
+                        title="Mark Active Subtask FAILED (F)"
+                      >
+                        <span class="fail-btn-symbol">F</span>
+                      </button>
+                    {:else if subtask.status === 'Failed'}
+                      <button 
+                        type="button" 
+                        class="subtask-fail-btn is-failed" 
+                        disabled
+                        title="Subtask Already Marked Failed"
+                      >
+                        <span class="fail-btn-symbol">F</span>
+                      </button>
+                    {/if}
                   {/if}
                 </div>
               </div>
@@ -926,7 +985,7 @@
   }
 
   .subtask-actions { display: flex; align-items: center; gap: 6px; }
-  .subtask-edit-btn, .subtask-order-btn, .subtask-delete-btn, .subtask-save-btn, .subtask-cancel-btn {
+  .subtask-edit-btn, .subtask-order-btn, .subtask-delete-btn, .subtask-fail-btn, .subtask-save-btn, .subtask-cancel-btn {
     width: 30px; height: 30px; border-radius: 50% !important; display: flex; align-items: center;
     justify-content: center; background: rgba(255, 255, 255, 0.05); border: 1.5px solid rgba(255, 255, 255, 0.12);
     color: var(--text-muted); cursor: pointer; transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
@@ -962,6 +1021,26 @@
   .subtask-delete-btn:hover {
     background: rgba(239, 68, 68, 0.25); color: #f87171; border-color: rgba(239, 68, 68, 0.65); transform: scale(1.1);
     box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+  }
+  .subtask-fail-btn {
+    background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.35); color: #f87171;
+  }
+  .subtask-fail-btn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.35); color: #ffffff; border-color: #ef4444; transform: scale(1.1);
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.5);
+  }
+  .subtask-fail-btn:disabled {
+    opacity: 0.35; cursor: not-allowed; border-color: rgba(239, 68, 68, 0.15) !important; color: #64748b !important;
+  }
+  .fail-btn-symbol {
+    font-size: 12.5px; font-weight: 900; line-height: 1;
+  }
+  .stage-pill-badge.failed {
+    color: #fca5a5; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35);
+  }
+  :global(.status-icon.failed) { color: #ef4444; }
+  .subtask-item-card.failed {
+    border-color: rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.04);
   }
 
   /* Compact Meta Info Grid in Portion 1 */

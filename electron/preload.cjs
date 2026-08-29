@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Strikes Operations
   getStrikes: () => ipcRenderer.invoke('get-strikes'),
+  getNextRcId: (payload) => ipcRenderer.invoke('get-next-rc-id', payload),
   createStrike: (payload) => ipcRenderer.invoke('create-strike', payload),
   updateStrikeStatus: (payload) => ipcRenderer.invoke('update-strike-status', payload),
   updateStrike: (payload) => ipcRenderer.invoke('update-strike', payload),
@@ -58,6 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Sync & Storage
   syncData: () => ipcRenderer.invoke('sync-data'),
+  verifyStrategiesIntegrity: () => ipcRenderer.invoke('verify-strategies-integrity'),
   openDbLocation: () => ipcRenderer.invoke('open-db-location'),
   
   // Window Controls & Lifecycle

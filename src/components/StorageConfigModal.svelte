@@ -1,6 +1,9 @@
 <script>
   import { store } from '../lib/store.svelte.js';
-  import { Database, Folder, FolderSync, ExternalLink, X, Settings, HardDrive, FileText } from 'lucide-svelte';
+  import { Database, Folder, FolderSync, ExternalLink, X, Settings, HardDrive, FileText, ShieldCheck, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-svelte';
+
+  let isVerifying = $state(false);
+  let verifyReport = $state(null);
 
   function handleOverlayKeyDown(e) {
     if (e.key === 'Escape') {
@@ -22,6 +25,17 @@
 
   async function handleOpenStrategiesFolder() {
     await store.openStrategiesFolder();
+  }
+
+  async function handleVerifyStrategies() {
+    if (isVerifying) return;
+    isVerifying = true;
+    try {
+      const res = await store.verifyStrategies();
+      verifyReport = res;
+    } finally {
+      isVerifying = false;
+    }
   }
 </script>
 
@@ -75,7 +89,44 @@
               <ExternalLink size={14} />
               <span>OPEN IN EXPLORER</span>
             </button>
+            <button type="button" class="btn-action verify" onclick={handleVerifyStrategies} disabled={isVerifying}>
+              {#if isVerifying}
+                <Loader2 size={14} class="spin" />
+                <span>AUDITING...</span>
+              {:else}
+                <ShieldCheck size={14} />
+                <span>VERIFY INTEGRITY</span>
+              {/if}
+            </button>
           </div>
+
+          {#if verifyReport}
+            <div class="verify-report-box" class:is-success={verifyReport.success}>
+              <div class="report-header">
+                <ShieldCheck size={15} class="report-shield-icon" />
+                <span class="report-title">STRATEGIES INTEGRITY AUDIT REPORT</span>
+              </div>
+              <div class="report-grid">
+                <div class="report-stat">
+                  <span class="stat-num">{verifyReport.totalMarkdownFiles ?? 0}</span>
+                  <span class="stat-lbl">FILES SCANNED</span>
+                </div>
+                <div class="report-stat">
+                  <span class="stat-num">{verifyReport.validSyncedFiles ?? 0}</span>
+                  <span class="stat-lbl">VALID & SYNCED</span>
+                </div>
+                <div class="report-stat">
+                  <span class="stat-num">{verifyReport.sentinelProtectedCount ?? 0}</span>
+                  <span class="stat-lbl">NOTES PROTECTED</span>
+                </div>
+                <div class="report-stat">
+                  <span class="stat-num">{verifyReport.directoriesChecked ?? 6}</span>
+                  <span class="stat-lbl">DIRECTORIES OK</span>
+                </div>
+              </div>
+              <p class="report-summary">{verifyReport.summary}</p>
+            </div>
+          {/if}
         </div>
 
         <div class="section-divider">
@@ -157,7 +208,9 @@
 
   .modal-card {
     width: 100%;
-    max-width: 700px;
+    max-width: 720px;
+    max-height: calc(100vh - 110px);
+    height: auto;
     background: rgba(12, 17, 29, 0.98);
     border: 1px solid rgba(139, 92, 246, 0.45);
     border-radius: 26px;
@@ -171,7 +224,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 22px 30px;
+    padding: 20px 30px;
     background: rgba(139, 92, 246, 0.08);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
@@ -240,12 +293,18 @@
   }
 
   .modal-body {
-    padding: 26px 30px;
+    flex: 1;
+    min-height: 0;
+    padding: 22px 30px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 18px;
     overflow-y: auto;
+    overflow-x: hidden;
   }
+  .modal-body::-webkit-scrollbar { width: 6px; }
+  .modal-body::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.45); border-radius: 99px; }
+  .modal-body::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
 
   /* ─── Section blocks ─── */
   .section-block {
@@ -394,6 +453,81 @@
     background: linear-gradient(135deg, rgba(167, 139, 250, 0.38), rgba(139, 92, 246, 0.28));
     box-shadow: 0 0 16px rgba(167, 139, 250, 0.25);
     transform: translateY(-1px);
+  }
+
+  /* Strategies — verify integrity */
+  .btn-action.verify {
+    color: #a7f3d0;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.15));
+    border: 1px solid rgba(16, 185, 129, 0.45);
+  }
+  .btn-action.verify:hover:not(:disabled) {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.45), rgba(5, 150, 105, 0.35));
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+    transform: translateY(-1px);
+  }
+  .btn-action.verify:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  :global(.spin) { animation: spin 1s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  .verify-report-box {
+    margin-top: 14px;
+    padding: 14px 18px;
+    background: rgba(6, 10, 18, 0.95);
+    border: 1.5px solid rgba(16, 185, 129, 0.35);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4), 0 0 20px rgba(16, 185, 129, 0.15);
+    animation: fadeIn 0.2s ease;
+  }
+  .report-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  :global(.report-shield-icon) { color: #34d399; }
+  .report-title {
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    color: #a7f3d0;
+  }
+  .report-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .report-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+    text-align: center;
+  }
+  .stat-num {
+    font-size: 16px;
+    font-weight: 900;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+  }
+  .stat-lbl {
+    font-size: 8.5px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+  .report-summary {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #cbd5e1;
+    margin: 0;
+    line-height: 1.4;
   }
 
   /* ─── Divider ─── */

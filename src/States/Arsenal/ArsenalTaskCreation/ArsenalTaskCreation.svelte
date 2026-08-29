@@ -94,8 +94,33 @@
     return allSystemTags.includes(q) || tags.includes(q);
   });
 
+  let detectedPriority = $state(null);
+
+  function handleTitleInput(val) {
+    title = val;
+    const matches = Array.from(val.matchAll(/#(high|med|medium|low)\b/gi));
+    if (matches.length > 0) {
+      const lastTag = matches[matches.length - 1][1].toLowerCase();
+      if (lastTag === 'high') {
+        priority = 'High';
+        detectedPriority = 'High';
+      } else if (lastTag === 'med' || lastTag === 'medium') {
+        priority = 'Medium';
+        detectedPriority = 'Medium';
+      } else if (lastTag === 'low') {
+        priority = 'Low';
+        detectedPriority = 'Low';
+      }
+    } else {
+      detectedPriority = null;
+    }
+  }
+
   function focusTitleInput(node) {
-    setTimeout(() => node.focus(), 50);
+    setTimeout(() => {
+      node.focus();
+      node.select?.();
+    }, 50);
   }
 
   function attachTag(tagToAdd) {
@@ -137,8 +162,13 @@
     if (e && e.preventDefault) e.preventDefault();
     if (isSubmitting) return;
 
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
+    const cleanedTitle = title
+      .replace(/#(?:high|med|medium|low)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const finalTitle = cleanedTitle || title.trim();
+
+    if (!finalTitle) {
       store.showToast('Campaign Title is required.', 'warning');
       return;
     }
@@ -146,7 +176,7 @@
     isSubmitting = true;
     try {
       const success = await store.createArsenalTask({
-        title: trimmedTitle,
+        title: finalTitle,
         priority,
         tags: [...tags]
       });
@@ -157,6 +187,7 @@
         }
         title = '';
         priority = 'Medium';
+        detectedPriority = null;
         tags = [];
         tagInput = '';
         isTagSearchOpen = false;
@@ -238,13 +269,21 @@
           <input 
             id="campaign-title"
             type="text" 
-            placeholder="e.g. OPERATION ZERO TRUST INGESTION" 
+            placeholder="e.g. OPERATION ZERO TRUST INGESTION #High" 
             bind:value={title} 
+            oninput={(e) => handleTitleInput(e.target.value)}
             use:focusTitleInput
             required 
             autocomplete="off"
             class="tactical-input"
           />
+          {#if detectedPriority}
+            <div class="inline-syntax-feedback-bar">
+              <span class="syntax-pill priority-{detectedPriority.toLowerCase()}">
+                ⚡ PRIORITY DETECTED: {detectedPriority.toUpperCase()}
+              </span>
+            </div>
+          {/if}
         </div>
 
         <!-- Field 2: Tactical Priority Cards (High: Red, Medium: Gold, Low: Blue) -->
@@ -572,6 +611,7 @@
   /* Form Body */
   .form-body {
     flex: 1;
+    min-height: 0;
     padding: 26px 36px;
     display: flex;
     flex-direction: column;
@@ -579,6 +619,9 @@
     gap: 20px;
     overflow-y: auto;
   }
+  .form-body::-webkit-scrollbar { width: 6px; }
+  .form-body::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.45); border-radius: 99px; }
+  .form-body::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
 
   .field-group {
     display: flex;
@@ -629,6 +672,42 @@
     border-color: rgba(139, 92, 246, 0.65);
     box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.20), 0 0 20px rgba(139, 92, 246, 0.15);
     outline: none;
+  }
+
+  .inline-syntax-feedback-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    animation: fadeIn 0.15s ease;
+  }
+  .syntax-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+  }
+  .syntax-pill.priority-high {
+    background: rgba(239, 68, 68, 0.18);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+  }
+  .syntax-pill.priority-medium {
+    background: rgba(245, 158, 11, 0.18);
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    color: #fde68a;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+  }
+  .syntax-pill.priority-low {
+    background: rgba(59, 130, 246, 0.18);
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    color: #93c5fd;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
   }
 
   /* Priority Cards Grid */

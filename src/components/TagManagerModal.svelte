@@ -331,7 +331,9 @@
 
   .modal-card {
     width: 100%;
-    max-width: 680px;
+    max-width: 700px;
+    max-height: calc(100vh - 110px);
+    height: auto;
     background: rgba(12, 17, 29, 0.98);
     border: 1px solid rgba(139, 92, 246, 0.45);
     border-radius: 26px;
@@ -345,7 +347,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 22px 30px;
+    padding: 20px 30px;
     background: rgba(139, 92, 246, 0.08);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
@@ -381,7 +383,7 @@
   }
 
   .subtitle {
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 700;
     letter-spacing: 0.04em;
     word-spacing: 0.06em;
@@ -401,13 +403,18 @@
   }
 
   .modal-body {
-    padding: 24px 30px;
+    flex: 1;
+    min-height: 0;
+    padding: 22px 30px;
     display: flex;
     flex-direction: column;
     gap: 16px;
-    max-height: 480px;
     overflow-y: auto;
+    overflow-x: hidden;
   }
+  .modal-body::-webkit-scrollbar { width: 6px; }
+  .modal-body::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.45); border-radius: 99px; }
+  .modal-body::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
 
   .add-tag-bar {
     display: flex;
@@ -454,9 +461,11 @@
   }
 
   .tags-grid-container {
-    display: flex; flex-wrap: wrap; gap: 10px; min-height: 120px; max-height: 260px; overflow-y: auto;
-    padding: 14px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px;
+    display: flex; flex-wrap: wrap; gap: 10px; min-height: 140px; max-height: 320px; overflow-y: auto;
+    padding: 16px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px;
   }
+  .tags-grid-container::-webkit-scrollbar { width: 6px; }
+  .tags-grid-container::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.45); border-radius: 99px; }
 
   .empty-tags-state {
     width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;

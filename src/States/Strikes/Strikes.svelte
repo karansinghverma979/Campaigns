@@ -6,7 +6,8 @@
   import { 
     Zap, Calendar, Clock, Plus, Trash2, CheckCircle2, 
     AlertCircle, ChevronLeft, ChevronRight, Filter, 
-    ListFilter, Layers, CheckSquare, Square, Edit3, X, Sparkles, ChevronDown, Check, AlertOctagon, Ban, RotateCw, Flame, Repeat
+    ListFilter, Layers, CheckSquare, Square, Edit3, X, Sparkles, ChevronDown, Check, AlertOctagon, Ban, RotateCw, Flame, Repeat,
+    Star, BookOpen, Search, Package, Inbox, ArrowRight
   } from 'lucide-svelte';
 
   // Active View Mode: 'Day', '3 Days', 'Week', 'Schedule'
@@ -159,6 +160,7 @@
   let recurrenceOccurrences = $state(5);
   let recurrenceEndDate = $state(getFormattedDate());
   let isRecurrenceEndDatePickerOpen = $state(false);
+  let recurrenceNumbering = $state(false); // When true: base→(0), copies→(1)(2)(3)...
 
   const weekDayOptions = [
     { day: 0, label: 'S' },
@@ -181,17 +183,142 @@
       recurrenceWeekDays = [...recurrenceWeekDays, dayNum];
     }
   }
+  // ── TACTICAL BLUEPRINTS (Strike Templates) ──
+  let isBlueprintsOpen = $state(false);
+
+  // All saved blueprints — filtered from the main strikes array by TEMPLATE status
+  const allBlueprints = $derived(store.strikes.filter(s => s.status === 'TEMPLATE'));
+
+  async function saveAsBlueprint(strike) {
+    if (!strike || !strike.title) return;
+    if (strike.recurrence_id) {
+      store.showToast('Tactical Block: Recurring strikes cannot be saved as Blueprints.', 'warning');
+      return;
+    }
+    const cleanTitle = strike.title.trim();
+    const alreadyExists = allBlueprints.some(bp => (bp.title || '').toLowerCase().trim() === cleanTitle.toLowerCase());
+    if (alreadyExists) {
+      store.showToast(`Tactical Block: Blueprint "${cleanTitle}" already exists.`, 'warning');
+      return;
+    }
+    const result = await store.createStrike({
+      title: cleanTitle,
+      execution_date: getFormattedDate(),
+      priority: 'Low',
+      status: 'TEMPLATE',
+      notes: strike.notes || '',
+      subtask_id: null,
+      recurrence_id: null
+    });
+    if (result) {
+      store.showToast(`📑 Blueprint saved: "${cleanTitle}"`, 'info');
+    }
+  }
+
+  async function instantiateBlueprint(blueprint) {
+    if (!blueprint) return;
+    const result = await store.createStrike({
+      title: blueprint.title,
+      execution_date: getFormattedDate(),
+      priority: 'Low',
+      status: 'STANDBY',
+      notes: blueprint.notes || '',
+      subtask_id: null,
+      recurrence_id: null
+    });
+    if (result) {
+      store.showToast(`⚡ Blueprint instantiated as today's strike: "${blueprint.title}"`, 'info');
+    }
+  }
+
+  async function deleteBlueprint(blueprintId) {
+    const success = await store.deleteStrike(blueprintId);
+    if (success) {
+      store.showToast('🗑️ Blueprint removed.', 'info');
+    }
+  }
+
+  // ── TACTICAL UNDATED DIRECTIVES HOLDING BAY ──
+  let isUndatedModalOpen = $state(false);
+  let activeDeployUndatedId = $state(null);
+  let deployUndatedDateInput = $state(getFormattedDate());
+  let isDeployUndatedPickerOpen = $state(false);
+  let undatedSearchQuery = $state('');
+  let undatedFilterPriority = $state('ALL');
+  let isUndatedModeNew = $state(false);
+  let isUndatedModeEdit = $state(false);
+
+  // All undated strikes — filtered from the main strikes array by UNDATED status
+  const allUndatedStrikes = $derived.by(() => {
+    const list = store.strikes.filter(s => s.status === 'UNDATED');
+    return [...list].sort((a, b) => getPriorityWeight(a.priority) - getPriorityWeight(b.priority));
+  });
+
+  const filteredUndatedStrikes = $derived.by(() => {
+    let list = allUndatedStrikes;
+    if (undatedFilterPriority !== 'ALL') {
+      list = list.filter(s => s.priority === undatedFilterPriority);
+    }
+    if (undatedSearchQuery.trim()) {
+      const q = undatedSearchQuery.toLowerCase().trim();
+      list = list.filter(s => 
+        (s.title || '').toLowerCase().includes(q) || 
+        (s.notes || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  });
+
+  async function deployUndatedToToday(strikeId) {
+    if (!strikeId) return;
+    await store.deployUndatedStrike(strikeId, todayFormatted);
+  }
+
+  async function deployUndatedToDate(strikeId, targetDate) {
+    if (!strikeId || !targetDate) return;
+    const parsed = ChronosMath.parseDate(targetDate);
+    if (!parsed) {
+      store.showToast('Invalid target date for strike deployment.', 'warning');
+      return;
+    }
+    const success = await store.deployUndatedStrike(strikeId, targetDate);
+    if (success) {
+      activeDeployUndatedId = null;
+      isDeployUndatedPickerOpen = false;
+    }
+  }
+
+  async function deleteUndatedStrike(strikeId) {
+    if (!strikeId) return;
+    const success = await store.deleteStrike(strikeId);
+    if (success) {
+      store.showToast('🗑️ Undated directive deleted from holding bay.', 'info');
+    }
+  }
 
   // Custom Recurrence Generator
   async function generateRecurrentStrikes() {
     if (!recurrenceTargetStrike) return;
 
     const baseStrike = recurrenceTargetStrike;
+
+    // ── GUARD: strike already belongs to a recurrence group ──
+    if (baseStrike.recurrence_id) {
+      store.showToast(`Tactical Block: This strike is already part of recurrence group ${baseStrike.recurrence_id}.`, 'warning');
+      recurrenceTargetStrike = null;
+      return;
+    }
+
     const baseDate = ChronosMath.parseDate(baseStrike.execution_date);
     if (!baseDate) {
       store.showToast('Invalid base execution date for recurrence.', 'warning');
       return;
     }
+
+    // Strip any existing trailing " (N)" suffix from base title so numbering is always clean
+    const cleanBaseName = recurrenceNumbering
+      ? baseStrike.title.replace(/\s*\(\d+\)$/, '').trim()
+      : baseStrike.title;
 
     const interval = Math.max(1, parseInt(recurrenceInterval, 10) || 1);
     const generatedDates = [];
@@ -202,7 +329,7 @@
       let safetyCounter = 0;
 
       if (recurrenceFreq === 'Week') {
-        curr.setDate(curr.getDate() + 1); // Start from day after base strike
+        curr.setDate(curr.getDate() + 1);
         while (generatedDates.length < targetCount && safetyCounter < 500) {
           const dayOfWeek = curr.getDay();
           if (recurrenceWeekDays.includes(dayOfWeek)) {
@@ -223,7 +350,6 @@
         }
       }
     } else {
-      // Date boundary mode
       const limitDate = ChronosMath.parseDate(recurrenceEndDate);
       if (!limitDate) {
         store.showToast('Invalid end date for recurrence.', 'warning');
@@ -259,41 +385,93 @@
       }
     }
 
-    // Filter out existing strikes with same name on same date
+    // ── Pre-calculate how many copies will actually be created (non-duplicate) ──
+    // We need this BEFORE creating anything so we can fetch the RC id with the correct total count
+    const validDates = generatedDates.filter(dStr => {
+      if (dStr === baseStrike.execution_date) return false;
+      const copyTitle = recurrenceNumbering ? `${cleanBaseName} (1)` : baseStrike.title; // approximate for dup check
+      return !store.strikes.some(s =>
+        s.execution_date === dStr &&
+        s.title.toLowerCase().trim() === (recurrenceNumbering ? `${cleanBaseName} (1)` : baseStrike.title).toLowerCase().trim()
+      );
+    });
+    const totalCount = 1 + validDates.length; // base (1) + all non-duplicate copies
+
+    // ── Fetch the next RC id from main process ──
+    let rcId = null;
+    if (window.electronAPI && window.electronAPI.getNextRcId) {
+      const rcRes = await window.electronAPI.getNextRcId({ totalCount });
+      if (rcRes && rcRes.success) rcId = rcRes.rcId;
+    }
+
+    // ── NUMBERING MODE: rename base strike to "Title (0)" + assign rcId ──
+    if (recurrenceNumbering || rcId) {
+      await store.updateStrike({
+        id: baseStrike.id,
+        title: recurrenceNumbering ? `${cleanBaseName} (0)` : baseStrike.title,
+        execution_date: baseStrike.execution_date,
+        priority: baseStrike.priority,
+        status: baseStrike.status,
+        notes: baseStrike.notes || '',
+        subtask_id: baseStrike.subtask_id || null,
+        recurrence_id: rcId
+      });
+    }
+
+    // ── CREATE RECURRENCE COPIES ──
     let createdCount = 0;
     let duplicateCount = 0;
+    let copyIndex = 1;
 
     for (const dStr of generatedDates) {
       if (dStr === baseStrike.execution_date) continue;
 
-      const exists = store.strikes.some(s => 
-        s.execution_date === dStr && 
-        s.title.toLowerCase().trim() === baseStrike.title.toLowerCase().trim()
+      const copyTitle = recurrenceNumbering
+        ? `${cleanBaseName} (${copyIndex})`
+        : baseStrike.title;
+
+      const exists = store.strikes.some(s =>
+        s.execution_date === dStr &&
+        s.title.toLowerCase().trim() === copyTitle.toLowerCase().trim()
       );
 
       if (exists) {
         duplicateCount++;
+        if (recurrenceNumbering) copyIndex++;
         continue;
       }
 
       const created = await store.createStrike({
-        title: baseStrike.title,
+        title: copyTitle,
         execution_date: dStr,
         priority: baseStrike.priority || 'Medium',
         status: 'STANDBY',
         notes: baseStrike.notes || null,
-        subtask_id: baseStrike.subtask_id || null
+        subtask_id: baseStrike.subtask_id || null,
+        recurrence_id: rcId
       });
       if (created) createdCount++;
+      if (recurrenceNumbering) copyIndex++;
     }
 
     recurrenceTargetStrike = null;
-    store.showToast(`⚡ Recurrence Engine: ${createdCount} recurrent strikes initialized${duplicateCount > 0 ? ` (${duplicateCount} duplicate dates skipped)` : ''}.`, 'info');
+    recurrenceNumbering = false;
+    store.showToast(`⚡ Recurrence Engine: ${createdCount} strikes initialized · Group ${rcId || 'N/A'}${duplicateCount > 0 ? ` (${duplicateCount} duplicates skipped)` : ''}.`, 'info');
   }
 
-  // All Past Pending Strikes Across Entire System
+
+  // ── Priority Sorting Hierarchy: High (1) -> Medium (2) -> Low (3) ──
+  const PRIORITY_ORDER = { high: 1, medium: 2, low: 3 };
+  function getPriorityWeight(priority) {
+    if (!priority) return 2;
+    const key = String(priority).toLowerCase().trim();
+    return PRIORITY_ORDER[key] ?? 2;
+  }
+
+  // All Past Pending Strikes Across Entire System (Sorted: High -> Med -> Low)
   const allPendingStrikes = $derived.by(() => {
-    return store.strikes.filter(s => s.status === 'PENDING');
+    const list = store.strikes.filter(s => s.status === 'PENDING');
+    return [...list].sort((a, b) => getPriorityWeight(a.priority) - getPriorityWeight(b.priority));
   });
 
   const todayFormatted = getFormattedDate();
@@ -463,7 +641,8 @@
 
   // Filtered Strikes derived (Search + Priority + Status + Subtask Connection + Exclude Past)
   const filteredStrikes = $derived.by(() => {
-    let list = store.strikes;
+    // Exclude TEMPLATE blueprints & UNDATED directives from operational views — they live in their dedicated panels
+    let list = store.strikes.filter(s => s.status !== 'TEMPLATE' && s.status !== 'UNDATED');
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -488,7 +667,8 @@
       list = list.filter(s => !!s.subtask_id);
     }
 
-    return list;
+    // Sort by Priority: High (top) -> Medium (middle) -> Low (bottom)
+    return [...list].sort((a, b) => getPriorityWeight(a.priority) - getPriorityWeight(b.priority));
   });
 
   // View-Mode-Aware Filtered Strikes Count for Filter Bar Pill
@@ -670,13 +850,15 @@
     if (e.key === 'Escape') {
       if (editingStrike) { editingStrike = null; return; }
       if (store.isStrikeModalOpen) { store.isStrikeModalOpen = false; return; }
+      if (isUndatedModalOpen) { isUndatedModalOpen = false; return; }
+      if (isBlueprintsOpen) { isBlueprintsOpen = false; return; }
       if (isPendingModalOpen) { isPendingModalOpen = false; return; }
       if (recurrenceTargetStrike) { recurrenceTargetStrike = null; return; }
       clearStrikeFocus();
       return;
     }
 
-    if (editingStrike || store.isStrikeModalOpen || isPendingModalOpen || recurrenceTargetStrike) return;
+    if (editingStrike || store.isStrikeModalOpen || isUndatedModalOpen || isBlueprintsOpen || isPendingModalOpen || recurrenceTargetStrike) return;
 
     // Arrow Left / Right: navigate dates (not when a card is focused to avoid conflict)
     if (e.key === 'ArrowLeft' && !focusedStrikeId) {
@@ -725,13 +907,25 @@
         return;
       }
 
-      // Delete or X — delete focused card (with confirmation)
+      // Delete or X — delete focused card if STANDBY, or abort if ENGAGED/PENDING
       if ((e.key === 'Delete' || key === 'x') && focused) {
         e.preventDefault();
-        const confirmed = window.confirm(`Delete strike "${focused.title}"? This cannot be undone.`);
-        if (confirmed) {
-          handleDelete(focused.id, null);
-          clearStrikeFocus();
+        if (focused.status === 'STANDBY') {
+          const confirmed = window.confirm(`Delete strike "${focused.title}"? This cannot be undone.`);
+          if (confirmed) {
+            handleDelete(focused.id, null);
+            clearStrikeFocus();
+          }
+        } else if (focused.status === 'ENGAGED' || focused.status === 'PENDING') {
+          const confirmed = window.confirm(`Abort active strike "${focused.title}"?`);
+          if (confirmed) {
+            handleAbortStrike(focused.id, null);
+            clearStrikeFocus();
+          }
+        } else if (focused.status === 'NEUTRALIZED') {
+          store.showToast('Tactical Lock: Completed/Neutralized strike is finished and cannot be deleted or aborted.', 'warning');
+        } else {
+          store.showToast('Tactical Lock: Strike directive is already ABORTED.', 'warning');
         }
         return;
       }
@@ -759,28 +953,207 @@
     }
   }
 
+  function focusTitleInput(node) {
+    setTimeout(() => {
+      node.focus();
+      node.select?.();
+    }, 50);
+  }
+
+  let liveStrikeFeedbackNew = $state({ priority: null, date: null, isPast: false, isUndated: false });
+  let liveStrikeFeedbackEdit = $state({ priority: null, date: null, isPast: false, isUndated: false });
+
+  let ghostSuggestionNew = $state({ suffix: '', full: '', partial: '' });
+  let ghostSuggestionEdit = $state({ suffix: '', full: '', partial: '' });
+
+  const SMART_SUGGESTION_CATALOG = [
+    '#High', '#Med', '#Low',
+    '@floating', '@undated', '@today', '@tom', '@nextmon', '@nextfri', '@unplanned'
+  ];
+
+  function computeGhostSuggestion(text) {
+    if (!text) return { suffix: '', full: '', partial: '' };
+    const match = text.match(/(?:^|\s)([@#][a-zA-Z0-9]*)$/);
+    if (!match) return { suffix: '', full: '', partial: '' };
+    
+    const partial = match[1];
+    if (partial.length < 1) return { suffix: '', full: '', partial: '' };
+
+    const found = SMART_SUGGESTION_CATALOG.find(cand => 
+      cand.toLowerCase().startsWith(partial.toLowerCase()) && cand.toLowerCase() !== partial.toLowerCase()
+    );
+
+    if (found) {
+      const suffix = found.slice(partial.length);
+      return { suffix, full: found, partial };
+    }
+    return { suffix: '', full: '', partial: '' };
+  }
+
+  function acceptGhostSuggestion(isEdit = false) {
+    const ghost = isEdit ? ghostSuggestionEdit : ghostSuggestionNew;
+    if (!ghost.suffix || !ghost.full) return false;
+    
+    if (isEdit) {
+      const lastIndex = (editTitle || '').lastIndexOf(ghost.partial);
+      if (lastIndex !== -1) {
+        editTitle = editTitle.slice(0, lastIndex) + ghost.full + ' ';
+        ghostSuggestionEdit = { suffix: '', full: '', partial: '' };
+        handleStrikeTitleInput(editTitle, true);
+        return true;
+      }
+    } else {
+      const lastIndex = (newStrikeTitle || '').lastIndexOf(ghost.partial);
+      if (lastIndex !== -1) {
+        newStrikeTitle = newStrikeTitle.slice(0, lastIndex) + ghost.full + ' ';
+        ghostSuggestionNew = { suffix: '', full: '', partial: '' };
+        handleStrikeTitleInput(newStrikeTitle, false);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function cleanStrikeTitle(rawTitle, parsedDate) {
+    let cleaned = rawTitle || '';
+    if (parsedDate && parsedDate.allMatchedTexts && parsedDate.allMatchedTexts.length > 0) {
+      for (const m of parsedDate.allMatchedTexts) {
+        cleaned = cleaned.replaceAll(m, '');
+      }
+    } else if (parsedDate && parsedDate.matchedText) {
+      cleaned = cleaned.replaceAll(parsedDate.matchedText, '');
+    }
+    // Remove all remaining @date tokens that resolve to valid date tokens
+    cleaned = cleaned.replace(/@([a-zA-Z0-9+]+(?:[-/.][a-zA-Z0-9]+)*)\b/g, (match) => {
+      return ChronosMath.parseSingleDateToken(match) ? '' : match;
+    });
+    // Strip @undated / @unplanned / @floating / @float / @later / @none tags
+    cleaned = cleaned.replace(/@(?:undated|unplanned|floating|float|later|none)\b/gi, '');
+    cleaned = cleaned.replace(/#(?:high|med|medium|low)\b/gi, '');
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    return cleaned;
+  }
+
+  function handleStrikeTitleInput(val, isEdit = false) {
+    const isUndatedTag = /@(?:undated|unplanned|floating|float|later|none)\b/i.test(val);
+
+    if (isEdit) {
+      editTitle = val;
+      const priMatches = Array.from(val.matchAll(/#(high|med|medium|low)\b/gi));
+      if (priMatches.length > 0) {
+        const lastPri = priMatches[priMatches.length - 1][1].toLowerCase();
+        if (lastPri === 'high') { editPriority = 'High'; liveStrikeFeedbackEdit.priority = 'High'; }
+        else if (lastPri === 'med' || lastPri === 'medium') { editPriority = 'Medium'; liveStrikeFeedbackEdit.priority = 'Medium'; }
+        else if (lastPri === 'low') { editPriority = 'Low'; liveStrikeFeedbackEdit.priority = 'Low'; }
+      } else {
+        liveStrikeFeedbackEdit.priority = null;
+      }
+
+      if (isUndatedTag) {
+        isUndatedModeEdit = true;
+        liveStrikeFeedbackEdit.isUndated = true;
+        liveStrikeFeedbackEdit.date = null;
+        liveStrikeFeedbackEdit.isPast = false;
+      } else {
+        liveStrikeFeedbackEdit.isUndated = isUndatedModeEdit;
+        const parsed = ChronosMath.parseSubtaskDate(val);
+        if (parsed) {
+          liveStrikeFeedbackEdit.date = parsed.dateStr;
+          liveStrikeFeedbackEdit.isPast = Boolean(parsed.isPast);
+          if (!parsed.isPast && !isUndatedModeEdit) {
+            editExecutionDate = parsed.dateStr;
+          }
+        } else {
+          liveStrikeFeedbackEdit.date = null;
+          liveStrikeFeedbackEdit.isPast = false;
+        }
+      }
+      ghostSuggestionEdit = computeGhostSuggestion(val);
+    } else {
+      newStrikeTitle = val;
+      const priMatches = Array.from(val.matchAll(/#(high|med|medium|low)\b/gi));
+      if (priMatches.length > 0) {
+        const lastPri = priMatches[priMatches.length - 1][1].toLowerCase();
+        if (lastPri === 'high') { newStrikePriority = 'High'; liveStrikeFeedbackNew.priority = 'High'; }
+        else if (lastPri === 'med' || lastPri === 'medium') { newStrikePriority = 'Medium'; liveStrikeFeedbackNew.priority = 'Medium'; }
+        else if (lastPri === 'low') { newStrikePriority = 'Low'; liveStrikeFeedbackNew.priority = 'Low'; }
+      } else {
+        liveStrikeFeedbackNew.priority = null;
+      }
+
+      if (isUndatedTag) {
+        isUndatedModeNew = true;
+        liveStrikeFeedbackNew.isUndated = true;
+        liveStrikeFeedbackNew.date = null;
+        liveStrikeFeedbackNew.isPast = false;
+      } else {
+        liveStrikeFeedbackNew.isUndated = isUndatedModeNew;
+        const parsed = ChronosMath.parseSubtaskDate(val);
+        if (parsed) {
+          liveStrikeFeedbackNew.date = parsed.dateStr;
+          liveStrikeFeedbackNew.isPast = Boolean(parsed.isPast);
+          if (!parsed.isPast && !isUndatedModeNew) {
+            newStrikeExecutionDate = parsed.dateStr;
+          }
+        } else {
+          liveStrikeFeedbackNew.date = null;
+          liveStrikeFeedbackNew.isPast = false;
+        }
+      }
+      ghostSuggestionNew = computeGhostSuggestion(val);
+    }
+  }
+
   async function handleAddStrike(e) {
     if (e) e.preventDefault();
     if (!newStrikeTitle.trim()) return;
 
-    const parsedDate = ChronosMath.parseSubtaskDate(newStrikeTitle);
+    const priMatches = Array.from(newStrikeTitle.matchAll(/#(high|med|medium|low)\b/gi));
+    if (priMatches.length > 0) {
+      const lastPri = priMatches[priMatches.length - 1][1].toLowerCase();
+      if (lastPri === 'high') newStrikePriority = 'High';
+      else if (lastPri === 'med' || lastPri === 'medium') newStrikePriority = 'Medium';
+      else if (lastPri === 'low') newStrikePriority = 'Low';
+    }
+
+    const isUndatedTag = /@(?:undated|unplanned|floating|float|later|none)\b/i.test(newStrikeTitle);
+    const effectiveIsUndated = isUndatedModeNew || isUndatedTag;
+
+    const parsedDate = effectiveIsUndated ? null : ChronosMath.parseSubtaskDate(newStrikeTitle);
     if (parsedDate && parsedDate.isPast) {
       store.showToast('Tactical Block: Cannot schedule a Strike on a past date.', 'warning');
       return;
     }
 
-    const targetExecutionDate = parsedDate ? parsedDate.dateStr : (newStrikeExecutionDate || todayFormatted);
-    const cleanTitle = parsedDate ? newStrikeTitle.replace(parsedDate.matchedText, '').trim() : newStrikeTitle.trim();
-    const finalTitle = cleanTitle || newStrikeTitle.trim();
+    const targetExecutionDate = effectiveIsUndated ? '' : ((parsedDate && !parsedDate.isPast) ? parsedDate.dateStr : (newStrikeExecutionDate || todayFormatted));
+    const cleaned = cleanStrikeTitle(newStrikeTitle, parsedDate);
+    const finalTitle = cleaned || newStrikeTitle.trim();
 
-    // Title Uniqueness Lock: Prevent creating two strikes with identical name on same execution date
-    const duplicate = store.strikes.find(s => 
-      s.execution_date === targetExecutionDate && 
-      s.title.toLowerCase().trim() === finalTitle.toLowerCase().trim()
-    );
+    // Title Uniqueness Lock
+    if (effectiveIsUndated) {
+      const duplicate = store.strikes.find(s => 
+        s.status === 'UNDATED' && 
+        s.title.toLowerCase().trim() === finalTitle.toLowerCase().trim()
+      );
+      if (duplicate) {
+        store.showToast(`Tactical Block: An Undated Strike named "${finalTitle}" already exists in the holding bay.`, 'warning');
+        return;
+      }
+    } else {
+      const duplicate = store.strikes.find(s => 
+        s.execution_date === targetExecutionDate && 
+        s.status !== 'UNDATED' &&
+        s.title.toLowerCase().trim() === finalTitle.toLowerCase().trim()
+      );
+      if (duplicate) {
+        store.showToast(`Tactical Block: A Strike named "${finalTitle}" already exists on ${targetExecutionDate}.`, 'warning');
+        return;
+      }
+    }
 
-    if (duplicate) {
-      store.showToast(`Tactical Block: A Strike named "${finalTitle}" already exists on ${targetExecutionDate}.`, 'warning');
+    // Campaign-without-subtask guard: if a campaign is selected, a subtask must also be selected
+    if (editCampaignId && !editSubtaskId) {
+      store.showToast('Tactical Block: Selecting a Campaign requires choosing a specific Subtask.', 'warning');
       return;
     }
 
@@ -791,7 +1164,7 @@
       title: finalTitle,
       execution_date: targetExecutionDate,
       priority: newStrikePriority,
-      status: 'STANDBY',
+      status: effectiveIsUndated ? 'UNDATED' : 'STANDBY',
       notes: targetNotes,
       subtask_id: targetSubtaskId
     });
@@ -801,16 +1174,28 @@
       editNotes = '';
       editCampaignId = null;
       editSubtaskId = null;
+      isUndatedModeNew = false;
+      liveStrikeFeedbackNew = { priority: null, date: null, isPast: false, isUndated: false };
       await loadSubtasksMap();
+      if (effectiveIsUndated) {
+        store.showToast(`📦 Directive saved to Undated Holding Bay: "${finalTitle}"`, 'info');
+      }
     }
   }
+
 
   async function toggleStatus(strike, e) {
     if (e) e.stopPropagation();
 
-    // Once NEUTRALIZED or ABORTED, strike state is locked permanently
-    if (strike.status === 'NEUTRALIZED' || strike.status === 'ABORTED') {
+    // Once NEUTRALIZED or ABORTED or TEMPLATE or UNDATED, handle accordingly
+    if (strike.status === 'NEUTRALIZED' || strike.status === 'ABORTED' || strike.status === 'TEMPLATE') {
       store.showToast(`Tactical Lock: Strike directive is ${strike.status} and cannot be altered.`, 'warning');
+      return;
+    }
+
+    if (strike.status === 'UNDATED') {
+      store.showToast('Tactical Block: Undated Strikes must be scheduled to Today or a target date first.', 'warning');
+      isUndatedModalOpen = true;
       return;
     }
 
@@ -854,28 +1239,40 @@
       return;
     }
 
-    // S-02: Snapshot a plain copy — prevents live reactive mutations (e.g. auto PENDING)
-    // from being silently written back when the user saves
+    // S-02: Snapshot a plain copy — prevents live reactive mutations
     editingStrike = { ...strike };
     editTitle = strike.title;
     editPriority = strike.priority || 'Medium';
-    editExecutionDate = strike.execution_date;
-    editNotes = strike.notes || '';   // S-07: always reset — no stale notes from prior edit
+    editExecutionDate = strike.execution_date || todayFormatted;
+    editNotes = strike.notes || '';
     editSubtaskId = strike.subtask_id || null;
     editCampaignId = null;
     editAvailableSubtasks = [];
+    isUndatedModeEdit = strike.status === 'UNDATED';
+    liveStrikeFeedbackEdit = { priority: null, date: null, isPast: false, isUndated: isUndatedModeEdit };
 
-    // S-08: Use pre-loaded subtaskMap (O(1)) instead of sequential per-task IPC calls (O(N))
-    if (strike.subtask_id && subtaskMap[strike.subtask_id]) {
-      const linkedSubtask = subtaskMap[strike.subtask_id];
-      const ownerTask = store.tasks.find(t => t.id === linkedSubtask.task_id);
-      if (ownerTask) {
-        editCampaignId = ownerTask.id;
-        // Load available subtasks for this campaign (one IPC call, not N)
+    // S-08: Resolve linked campaign and available subtasks reliably
+    if (strike.subtask_id) {
+      const subIdNum = Number(strike.subtask_id);
+      const linkedSubtask = subtaskMap[strike.subtask_id] || subtaskMap[subIdNum] || subtaskMap[String(strike.subtask_id)];
+      let ownerTaskId = linkedSubtask ? linkedSubtask.task_id : null;
+
+      // Fallback: if not in subtaskMap yet, look for task matching campaign_title
+      if (!ownerTaskId && strike.campaign_title) {
+        const matchingTask = store.tasks.find(t => t.title === strike.campaign_title);
+        if (matchingTask) ownerTaskId = matchingTask.id;
+      }
+
+      if (ownerTaskId) {
+        editCampaignId = ownerTaskId;
         if (window.electronAPI && window.electronAPI.getSubtasks) {
-          const subRes = await window.electronAPI.getSubtasks(ownerTask.id);
-          if (subRes && subRes.success) {
-            editAvailableSubtasks = (subRes.subtasks || []).filter(st => st.status === 'Doing' || st.id === strike.subtask_id);
+          try {
+            const subRes = await window.electronAPI.getSubtasks(ownerTaskId);
+            if (subRes && subRes.success && subRes.subtasks) {
+              editAvailableSubtasks = subRes.subtasks.filter(st => st.status === 'Doing' || Number(st.id) === subIdNum);
+            }
+          } catch (err) {
+            console.error('Failed to load campaign subtasks in edit modal:', err);
           }
         }
       }
@@ -883,15 +1280,19 @@
   }
 
   async function handleCampaignChange(e) {
-    const cid = e.target.value ? parseInt(e.target.value, 10) : null;
+    const rawVal = e && e.target ? e.target.value : e;
+    const cid = rawVal ? parseInt(rawVal, 10) : null;
     editCampaignId = cid;
     editSubtaskId = null;
     editAvailableSubtasks = [];
     if (cid && window.electronAPI && window.electronAPI.getSubtasks) {
-      const res = await window.electronAPI.getSubtasks(cid);
-      if (res && res.success) {
-        // Strictly filter to subtasks currently in DOING state
-        editAvailableSubtasks = (res.subtasks || []).filter(st => st.status === 'Doing');
+      try {
+        const res = await window.electronAPI.getSubtasks(cid);
+        if (res && res.success && res.subtasks) {
+          editAvailableSubtasks = res.subtasks.filter(st => st.status === 'Doing');
+        }
+      } catch (err) {
+        console.error('Failed to load subtasks on campaign change:', err);
       }
     }
   }
@@ -912,24 +1313,67 @@
       store.showToast('Tactical Block: Selecting a Campaign requires choosing a specific Subtask.', 'warning');
       return;
     }
-    const parsed = ChronosMath.parseSubtaskDate('@' + editExecutionDate);
-    if (parsed && parsed.isPast && editExecutionDate !== editingStrike.execution_date) {
-      store.showToast('Tactical Block: New execution date cannot be set to the past.', 'warning');
-      return;
+
+    const priMatches = Array.from(editTitle.matchAll(/#(high|med|medium|low)\b/gi));
+    if (priMatches.length > 0) {
+      const lastPri = priMatches[priMatches.length - 1][1].toLowerCase();
+      if (lastPri === 'high') editPriority = 'High';
+      else if (lastPri === 'med' || lastPri === 'medium') editPriority = 'Medium';
+      else if (lastPri === 'low') editPriority = 'Low';
     }
+
+    const isUndatedTag = /@(?:undated|unplanned|floating|float|later|none)\b/i.test(editTitle);
+    const effectiveIsUndated = isUndatedModeEdit || isUndatedTag;
+
+    const parsedDate = effectiveIsUndated ? null : ChronosMath.parseSubtaskDate(editTitle);
+    if (parsedDate) {
+      if (parsedDate.isPast && parsedDate.dateStr !== editingStrike.execution_date) {
+        store.showToast('Tactical Block: Cannot schedule a Strike on a past date.', 'warning');
+        return;
+      }
+      editExecutionDate = parsedDate.dateStr;
+    }
+
+    if (!effectiveIsUndated) {
+      const parsed = ChronosMath.parseSubtaskDate('@' + editExecutionDate);
+      if (parsed && parsed.isPast && editExecutionDate !== editingStrike.execution_date) {
+        store.showToast('Tactical Block: New execution date cannot be set to the past.', 'warning');
+        return;
+      }
+    }
+
+    const cleaned = cleanStrikeTitle(editTitle, parsedDate);
+    const finalTitle = cleaned || editTitle.trim();
+
+    let nextStatus = editingStrike.status;
+    if (effectiveIsUndated) {
+      nextStatus = 'UNDATED';
+    } else if (editingStrike.status === 'UNDATED') {
+      nextStatus = 'STANDBY';
+    }
+
+    const targetSubtaskId = editSubtaskId ? parseInt(editSubtaskId, 10) : null;
+    const targetNotes = editNotes ? editNotes.trim() : '';
 
     const success = await store.updateStrike({
       id: editingStrike.id,
-      title: editTitle.trim(),
-      execution_date: editExecutionDate,
+      title: finalTitle,
+      execution_date: effectiveIsUndated ? '' : editExecutionDate,
       priority: editPriority,
-      status: editingStrike.status,
+      status: nextStatus,
       notes: editNotes,
-      subtask_id: editSubtaskId ? parseInt(editSubtaskId, 10) : null
+      subtask_id: editSubtaskId ? parseInt(editSubtaskId, 10) : null,
+      recurrence_id: editingStrike.recurrence_id || null
     });
 
     if (success) {
       editingStrike = null;
+      editCampaignId = null;
+      editSubtaskId = null;
+      editAvailableSubtasks = [];
+      editNotes = '';
+      liveStrikeFeedbackEdit = { priority: null, date: null, isPast: false };
+      await loadSubtasksMap();
     }
   }
 
@@ -955,9 +1399,31 @@
     }
   }
 
+  async function handleAbortStrike(strikeId, e) {
+    if (e) e.stopPropagation();
+    const strike = store.strikes.find(s => s.id === strikeId);
+    if (!strike) return;
+    if (strike.status === 'NEUTRALIZED') {
+      store.showToast('Tactical Lock: Completed/Neutralized strike is finished and cannot be aborted.', 'warning');
+      return;
+    }
+    if (strike.status === 'ABORTED') {
+      store.showToast('Tactical Lock: Strike directive is already ABORTED.', 'warning');
+      return;
+    }
+    await store.updateStrikeStatus(strikeId, 'ABORTED');
+    store.showToast('⛔ Strike directive marked ABORTED.', 'info');
+  }
+
   async function handleDelete(id, e) {
     if (e) e.stopPropagation();
+    const strike = store.strikes.find(s => s.id === id);
+    if (strike && strike.status !== 'STANDBY') {
+      store.showToast('Tactical Lock: Only STANDBY strikes can be deleted. Non-STANDBY strikes can only be Aborted.', 'warning');
+      return;
+    }
     await store.deleteStrike(id);
+    store.showToast('🗑️ Strike deleted.', 'info');
   }
 
   function selectGridDate(dateStr) {
@@ -1347,6 +1813,28 @@
                 <span>{allPendingStrikes.length} PENDING</span>
               </button>
             {/if}
+
+            <!-- TACTICAL UNDATED HOLDING BAY Button -->
+            <button
+              type="button"
+              class="stat-pill undated-pill"
+              onclick={() => isUndatedModalOpen = true}
+              title="Open Undated Strikes Holding Bay ({allUndatedStrikes.length} holding)"
+            >
+              <Package size={13} />
+              <span>{allUndatedStrikes.length} UNDATED</span>
+            </button>
+
+            <!-- TACTICAL BLUEPRINTS Button (Extreme Right) -->
+            <button
+              type="button"
+              class="stat-pill blueprint-pill"
+              onclick={() => isBlueprintsOpen = true}
+              title="Open Tactical Blueprints ({allBlueprints.length} saved)"
+            >
+              <BookOpen size={13} />
+              <span>{allBlueprints.length} BLUEPRINTS</span>
+            </button>
           </div>
         </div>
 
@@ -1401,7 +1889,7 @@
                   <div class="day-strike-body">
                     <span class="day-strike-title">{#each getStrikeTitleParts(s.title) as part}{#if part.highlight}<mark class="strike-search-highlight">{part.text}</mark>{:else}{part.text}{/if}{/each}</span>
                     {#if s.notes}
-                      <p class="day-strike-notes">{s.notes}</p>
+                      <p class="day-strike-notes">{#each getStrikeTitleParts(s.notes) as part}{#if part.highlight}<mark class="strike-search-highlight">{part.text}</mark>{:else}{part.text}{/if}{/each}</p>
                     {/if}
                     {#if s.subtask_id || s.campaign_title || s.subtask_title || (s.subtask_id && (subtaskMap[s.subtask_id] || subtaskMap[String(s.subtask_id)]))}
                       {@const matchedSubtask = s.subtask_id ? (subtaskMap[s.subtask_id] || subtaskMap[String(s.subtask_id)]) : null}
@@ -1472,6 +1960,8 @@
                     <button 
                       type="button" 
                       class="action-icon-btn repeat" 
+                      class:rc-locked={!!s.recurrence_id}
+                      disabled={!!s.recurrence_id}
                       onclick={(e) => { 
                         e.stopPropagation(); 
                         recurrenceTargetStrike = s;
@@ -1484,19 +1974,39 @@
                         recurrenceEndDate = ChronosMath.addDays(s.execution_date, 30);
                         isRecurrenceEndDatePickerOpen = false;
                       }} 
-                      title="Set Custom Recurrence Rule"
+                      title={s.recurrence_id ? `Recurrence Locked · Group ${s.recurrence_id}` : 'Set Custom Recurrence Rule'}
                     >
                       <Repeat size={15} />
                     </button>
 
-                    <button 
-                      type="button" 
-                      class="action-icon-btn delete" 
-                      onclick={(e) => handleDelete(s.id, e)} 
-                      title="Purge Strike Directive"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {#if s.status === 'STANDBY'}
+                      <button 
+                        type="button" 
+                        class="action-icon-btn delete" 
+                        onclick={(e) => handleDelete(s.id, e)} 
+                        title="Delete Strike Directive"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    {:else if s.status === 'ENGAGED' || s.status === 'PENDING'}
+                      <button 
+                        type="button" 
+                        class="action-icon-btn abort" 
+                        onclick={(e) => handleAbortStrike(s.id, e)} 
+                        title="Abort Strike Directive (A)"
+                      >
+                        <span class="btn-abort-symbol">A</span>
+                      </button>
+                    {:else if s.status === 'ABORTED'}
+                      <button 
+                        type="button" 
+                        class="action-icon-btn abort is-aborted" 
+                        disabled
+                        title="Strike Already Aborted"
+                      >
+                        <span class="btn-abort-symbol">A</span>
+                      </button>
+                    {/if}
                   </div>
                 </div>
               {/each}
@@ -1618,66 +2128,198 @@
           <Zap size={20} class="counter-zap" />
           <span>{editingStrike ? 'EDIT STRIKE DIRECTIVE' : 'DISPATCH NEW STRIKE DIRECTIVE'}</span>
         </div>
-        <button type="button" class="close-modal-btn" onclick={() => { editingStrike = null; store.isStrikeModalOpen = false; }}>
-          <X size={18} />
-        </button>
+        <div class="header-actions">
+          {#if editingStrike}
+            {@const isAlreadyBlueprint = allBlueprints.some(bp => (bp.title || '').toLowerCase().trim() === (editTitle || editingStrike.title || '').toLowerCase().trim())}
+            <button
+              type="button"
+              class="btn-save-blueprint {editingStrike.recurrence_id ? 'blueprint-locked' : ''} {isAlreadyBlueprint ? 'blueprint-saved' : ''}"
+              title={editingStrike.recurrence_id 
+                ? 'Blueprints not available for recurring strikes' 
+                : isAlreadyBlueprint 
+                  ? 'Blueprint already saved for this directive' 
+                  : 'Save as Blueprint Template'}
+              onclick={() => {
+                if (editingStrike.recurrence_id) {
+                  store.showToast('Tactical Block: Blueprints cannot be created from recurring strike instances.', 'warning');
+                } else if (isAlreadyBlueprint) {
+                  store.showToast(`Tactical Block: Blueprint "${editTitle || editingStrike.title}" already exists.`, 'warning');
+                } else {
+                  saveAsBlueprint(editingStrike);
+                }
+              }}
+            >
+              {#if isAlreadyBlueprint}
+                <Check size={14} strokeWidth={3} />
+                <span>SAVED AS BLUEPRINT</span>
+              {:else}
+                <Star size={15} />
+                <span>BLUEPRINT</span>
+              {/if}
+            </button>
+          {/if}
+          <button type="button" class="close-modal-btn" onclick={() => { editingStrike = null; store.isStrikeModalOpen = false; editCampaignId = null; editSubtaskId = null; editAvailableSubtasks = []; editNotes = ''; }}>
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       <div class="modal-body strike-modal-body">
         <!-- Row 1: Title -->
         <div class="form-group">
-          <label for="strike-modal-title">DIRECTIVE TITLE</label>
-          {#if editingStrike}
-            <input 
-              id="strike-modal-title"
-              type="text" 
-              bind:value={editTitle}
-              placeholder="Enter directive title..."
-              class="modal-input"
-            />
-          {:else}
-            <input 
-              id="strike-modal-title"
-              type="text" 
-              bind:value={newStrikeTitle}
-              placeholder="Enter directive title (e.g. Audit TLS Logs)..."
-              class="modal-input"
-            />
+          <div class="field-label-row">
+            <label for="strike-modal-title">DIRECTIVE TITLE</label>
+            {#if (editingStrike ? ghostSuggestionEdit.suffix : ghostSuggestionNew.suffix)}
+              <span class="ghost-hint-pill">Press <strong>Tab ⇥</strong> to complete {(editingStrike ? ghostSuggestionEdit.full : ghostSuggestionNew.full)}</span>
+            {/if}
+          </div>
+          <div class="smart-input-wrap">
+            {#if editingStrike}
+              <input 
+                id="strike-modal-title"
+                type="text" 
+                bind:value={editTitle}
+                oninput={(e) => handleStrikeTitleInput(e.target.value, true)}
+                use:focusTitleInput
+                placeholder="Enter directive title (e.g. Audit TLS Logs #High @floating or @tom)..."
+                class="modal-input modal-input-lg smart-input-field"
+                onkeydown={(e) => {
+                  if (e.key === 'Tab') {
+                    if (acceptGhostSuggestion(true)) {
+                      e.preventDefault();
+                      return;
+                    }
+                  }
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSaveEdit();
+                  }
+                }}
+              />
+              {#if ghostSuggestionEdit.suffix}
+                <div class="ghost-overlay" aria-hidden="true">
+                  <span class="ghost-echo">{editTitle}</span><span class="ghost-completion">{ghostSuggestionEdit.suffix}</span>
+                  <span class="ghost-tab-badge">Tab ⇥</span>
+                </div>
+              {/if}
+            {:else}
+              <input 
+                id="strike-modal-title"
+                type="text" 
+                bind:value={newStrikeTitle}
+                oninput={(e) => handleStrikeTitleInput(e.target.value, false)}
+                use:focusTitleInput
+                placeholder="Enter directive title (e.g. Audit TLS Logs #High @floating or @tom)..."
+                class="modal-input modal-input-lg smart-input-field"
+                onkeydown={async (e) => {
+                  if (e.key === 'Tab') {
+                    if (acceptGhostSuggestion(false)) {
+                      e.preventDefault();
+                      return;
+                    }
+                  }
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (newStrikeTitle.trim()) {
+                      await handleAddStrike();
+                      store.isStrikeModalOpen = false;
+                    }
+                  }
+                }}
+              />
+              {#if ghostSuggestionNew.suffix}
+                <div class="ghost-overlay" aria-hidden="true">
+                  <span class="ghost-echo">{newStrikeTitle}</span><span class="ghost-completion">{ghostSuggestionNew.suffix}</span>
+                  <span class="ghost-tab-badge">Tab ⇥</span>
+                </div>
+              {/if}
+            {/if}
+          </div>
+          {#if (editingStrike ? (liveStrikeFeedbackEdit.priority || liveStrikeFeedbackEdit.date || liveStrikeFeedbackEdit.isUndated) : (liveStrikeFeedbackNew.priority || liveStrikeFeedbackNew.date || liveStrikeFeedbackNew.isUndated))}
+            {@const feedback = editingStrike ? liveStrikeFeedbackEdit : liveStrikeFeedbackNew}
+            <div class="strike-inline-feedback-bar">
+              {#if feedback.priority}
+                <span class="syntax-pill priority-{feedback.priority.toLowerCase()}">
+                  ⚡ PRIORITY: {feedback.priority.toUpperCase()}
+                </span>
+              {/if}
+              {#if feedback.isUndated}
+                <span class="syntax-pill undated-detected">
+                  📦 UNDATED DIRECTIVE
+                </span>
+              {:else if feedback.date}
+                <span class="syntax-pill date-detected" class:is-past={feedback.isPast}>
+                  {#if feedback.isPast}
+                    ⚠️ PAST DATE BLOCKED: {feedback.date}
+                  {:else}
+                    📅 TARGET: {feedback.date}
+                  {/if}
+                </span>
+              {/if}
+            </div>
           {/if}
         </div>
 
         <!-- Row 2: Target Execution Date & Priority Level -->
         <div class="form-row">
           <div class="form-group flex-1">
-            <span class="field-label">TARGET EXECUTION DATE</span>
-            <div class="date-picker-wrap">
-              <button 
-                type="button" 
-                class="date-picker-btn modal-trigger-full" 
-                onclick={(e) => { e.stopPropagation(); isDatePickerOpen = !isDatePickerOpen; openDropdown = null; }}
+            <div class="field-label-row">
+              <span class="field-label">{(editingStrike ? isUndatedModeEdit : isUndatedModeNew) ? 'DIRECTIVE TIMELINE' : 'TARGET EXECUTION DATE'}</span>
+              <button
+                type="button"
+                class="btn-toggle-undated-mode"
+                class:is-active={editingStrike ? isUndatedModeEdit : isUndatedModeNew}
+                onclick={() => {
+                  if (editingStrike) {
+                    isUndatedModeEdit = !isUndatedModeEdit;
+                    liveStrikeFeedbackEdit.isUndated = isUndatedModeEdit;
+                  } else {
+                    isUndatedModeNew = !isUndatedModeNew;
+                    liveStrikeFeedbackNew.isUndated = isUndatedModeNew;
+                  }
+                }}
+                title="Toggle between Scheduled Date and Undated Holding Bay"
               >
-                <div class="trigger-label-group">
-                  <Calendar size={15} />
-                  <span>{editingStrike ? editExecutionDate : newStrikeExecutionDate}</span>
-                </div>
-                <ChevronDown size={14} />
+                <Package size={12} />
+                <span>{(editingStrike ? isUndatedModeEdit : isUndatedModeNew) ? 'UNDATED: ACTIVE' : 'MAKE UNDATED'}</span>
               </button>
-              {#if isDatePickerOpen}
-                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div class="date-picker-dropdown modal-popover" onclick={(e) => e.stopPropagation()}>
-                  <Calendar2X 
-                    value={editingStrike ? editExecutionDate : newStrikeExecutionDate} 
-                    onselect={(d) => {
-                      if (editingStrike) editExecutionDate = d;
-                      else newStrikeExecutionDate = d;
-                      isDatePickerOpen = false;
-                    }} 
-                    minDateStr={past6MonthsDateStr}
-                  />
-                </div>
-              {/if}
             </div>
+            
+            {#if (editingStrike ? isUndatedModeEdit : isUndatedModeNew)}
+              <div class="undated-mode-box">
+                <Package size={15} class="undated-box-icon" />
+                <span class="undated-box-label">UNDATED (Holding Bay)</span>
+              </div>
+            {:else}
+              <div class="date-picker-wrap">
+                <button 
+                  type="button" 
+                  class="date-picker-btn modal-trigger-full" 
+                  onclick={(e) => { e.stopPropagation(); isDatePickerOpen = !isDatePickerOpen; openDropdown = null; }}
+                >
+                  <div class="trigger-label-group">
+                    <Calendar size={15} />
+                    <span>{editingStrike ? editExecutionDate : newStrikeExecutionDate}</span>
+                  </div>
+                  <ChevronDown size={14} />
+                </button>
+                {#if isDatePickerOpen}
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="date-picker-dropdown modal-popover" onclick={(e) => e.stopPropagation()}>
+                    <Calendar2X 
+                      value={editingStrike ? editExecutionDate : newStrikeExecutionDate} 
+                      onselect={(d) => {
+                        if (editingStrike) editExecutionDate = d;
+                        else newStrikeExecutionDate = d;
+                        isDatePickerOpen = false;
+                      }} 
+                      minDateStr={past6MonthsDateStr}
+                    />
+                  </div>
+                {/if}
+              </div>
+            {/if}
           </div>
 
           <div class="form-group flex-1">
@@ -1857,7 +2499,7 @@
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="btn-cancel" onclick={() => { editingStrike = null; store.isStrikeModalOpen = false; }}>CANCEL</button>
+        <button type="button" class="btn-cancel" onclick={() => { editingStrike = null; store.isStrikeModalOpen = false; editCampaignId = null; editSubtaskId = null; editAvailableSubtasks = []; editNotes = ''; }}>CANCEL</button>
         {#if editingStrike}
           <button type="button" class="btn-save" onclick={handleSaveEdit}>SAVE DIRECTIVE</button>
         {:else}
@@ -2027,7 +2669,35 @@
           <span class="base-date">Base Execution: <strong>{recurrenceTargetStrike.execution_date}</strong></span>
         </div>
 
+        <!-- Sequential Numbering Toggle -->
+        <div class="form-group numbering-toggle-row">
+          <div class="numbering-toggle-left">
+            <span class="field-label">SEQUENTIAL NUMBERING</span>
+            <span class="field-hint numbering-hint">
+              {#if recurrenceNumbering}
+                Base → <strong>"{recurrenceTargetStrike.title.replace(/\s*\(\d+\)$/, '').trim()} (0)"</strong> &nbsp;·&nbsp; Copies → <strong>"… (1)"</strong>, <strong>"… (2)"</strong>…
+              {:else}
+                All copies use exact title: <strong>"{recurrenceTargetStrike.title}"</strong>
+              {/if}
+            </span>
+          </div>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="numbering-toggle-switch"
+            class:on={recurrenceNumbering}
+            onclick={() => { recurrenceNumbering = !recurrenceNumbering; }}
+            role="switch"
+            aria-checked={recurrenceNumbering}
+            tabindex="0"
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recurrenceNumbering = !recurrenceNumbering; } }}
+          >
+            <div class="toggle-knob"></div>
+          </div>
+        </div>
+
         <!-- Frequency & Interval Row -->
+
         <div class="form-row">
           <div class="form-group flex-1">
             <label for="recurrence-interval">REPEAT FREQUENCY</label>
@@ -2116,7 +2786,7 @@
               {#if isRecurrenceEndDatePickerOpen}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div class="date-picker-dropdown" onclick={(e) => e.stopPropagation()}>
+                <div class="date-picker-dropdown modal-popover" onclick={(e) => e.stopPropagation()}>
                   <Calendar2X 
                     value={recurrenceEndDate} 
                     onselect={(d) => { recurrenceEndDate = d; isRecurrenceEndDatePickerOpen = false; }} 
@@ -2135,6 +2805,310 @@
           <Repeat size={15} />
           <span>GENERATE RECURRENCE</span>
         </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ═══ TACTICAL BLUEPRINTS WINDOW (COMPACT HEADER & SINGLE-ROW CARDS) ═══ -->
+{#if isBlueprintsOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={() => isBlueprintsOpen = false}>
+    <div class="modal-dialog blueprints-drawer" onclick={(e) => e.stopPropagation()}>
+      
+      <!-- Compact 1-2 Line Header -->
+      <div class="modal-header blueprints-header">
+        <div class="header-left">
+          <BookOpen size={20} class="blueprint-header-icon" />
+          <span>TACTICAL BLUEPRINTS</span>
+          <span class="blueprint-count-badge">{allBlueprints.length}</span>
+        </div>
+        <button type="button" class="close-modal-btn" onclick={() => isBlueprintsOpen = false}>
+          <X size={18} />
+        </button>
+      </div>
+
+      <!-- Blueprints Body Content (Single Row Cards List) -->
+      <div class="blueprints-body">
+        {#if allBlueprints.length === 0}
+          <div class="blueprints-empty">
+            <div class="empty-icon-ring purple-glow">
+              <Star size={36} class="empty-sparkle" />
+            </div>
+            <h4>NO BLUEPRINTS SAVED YET</h4>
+            <p>Save any strike as a reusable blueprint by opening it in Edit mode and clicking the <strong>⭐ BLUEPRINT</strong> button.</p>
+          </div>
+        {:else}
+          <div class="blueprints-list">
+            {#each allBlueprints as bp (bp.id)}
+              <div class="blueprint-row-card">
+                <div class="bp-row-left">
+                  <div class="bp-star-icon">
+                    <Star size={15} />
+                  </div>
+                  <div class="bp-info-col">
+                    <div class="bp-title-line">
+                      <span class="bp-title">{bp.title}</span>
+                      <span class="bp-tag priority-low">LOW</span>
+                      <span class="bp-tag standby">STANDBY</span>
+                    </div>
+                    {#if bp.notes}
+                      <span class="bp-notes-text" title={bp.notes}>{bp.notes}</span>
+                    {/if}
+                  </div>
+                </div>
+
+                <div class="bp-row-right">
+                  <span class="bp-date-meta">Created {bp.created_at}</span>
+                  <button
+                    type="button"
+                    class="btn-instantiate"
+                    title="Instantly dispatch as today's STANDBY strike"
+                    onclick={() => instantiateBlueprint(bp)}
+                  >
+                    <Zap size={14} strokeWidth={2.5} />
+                    <span>INSTANTIATE TODAY</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-delete-blueprint"
+                    title="Delete blueprint permanently"
+                    onclick={() => deleteBlueprint(bp.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ═══ TACTICAL UNDATED DIRECTIVES HOLDING BAY WINDOW ═══ -->
+{#if isUndatedModalOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={() => { isUndatedModalOpen = false; activeDeployUndatedId = null; }}>
+    <div class="modal-dialog undated-modal-dialog" onclick={(e) => e.stopPropagation()}>
+      
+      <!-- Modal Header -->
+      <div class="modal-header undated-header">
+        <div class="header-left">
+          <Package size={20} class="undated-header-icon" />
+          <span>TACTICAL UNDATED DIRECTIVES HOLDING BAY</span>
+          <span class="undated-count-badge">{allUndatedStrikes.length} UNDATED</span>
+        </div>
+        <button type="button" class="close-modal-btn" onclick={() => { isUndatedModalOpen = false; activeDeployUndatedId = null; }}>
+          <X size={18} />
+        </button>
+      </div>
+
+      <!-- In-Modal Quick Search & Priority Filter Bar -->
+      <div class="undated-modal-toolbar">
+        <div class="undated-search-wrap">
+          <Search size={14} class="undated-search-icon" />
+          <input 
+            type="text" 
+            placeholder="Search undated directives or notes..." 
+            bind:value={undatedSearchQuery} 
+            class="undated-search-input"
+          />
+          {#if undatedSearchQuery}
+            <button type="button" class="btn-clear-undated-search" onclick={() => undatedSearchQuery = ''}>
+              <X size={12} />
+            </button>
+          {/if}
+        </div>
+
+        <div class="undated-pri-filters">
+          <button 
+            type="button" 
+            class="undated-pri-btn" 
+            class:active={undatedFilterPriority === 'ALL'}
+            onclick={() => undatedFilterPriority = 'ALL'}
+          >
+            ALL ({allUndatedStrikes.length})
+          </button>
+          <button 
+            type="button" 
+            class="undated-pri-btn pri-high" 
+            class:active={undatedFilterPriority === 'High'}
+            onclick={() => undatedFilterPriority = 'High'}
+          >
+            🔴 HIGH ({allUndatedStrikes.filter(s => s.priority === 'High').length})
+          </button>
+          <button 
+            type="button" 
+            class="undated-pri-btn pri-med" 
+            class:active={undatedFilterPriority === 'Medium'}
+            onclick={() => undatedFilterPriority = 'Medium'}
+          >
+            🟡 MED ({allUndatedStrikes.filter(s => s.priority === 'Medium').length})
+          </button>
+          <button 
+            type="button" 
+            class="undated-pri-btn pri-low" 
+            class:active={undatedFilterPriority === 'Low'}
+            onclick={() => undatedFilterPriority = 'Low'}
+          >
+            🔵 LOW ({allUndatedStrikes.filter(s => s.priority === 'Low').length})
+          </button>
+        </div>
+      </div>
+
+      <!-- Undated Directives Body Content -->
+      <div class="undated-body">
+        {#if allUndatedStrikes.length === 0}
+          <div class="undated-empty">
+            <div class="empty-icon-ring indigo-glow">
+              <Package size={36} class="empty-sparkle" />
+            </div>
+            <h4>NO UNDATED DIRECTIVES IN HOLDING BAY</h4>
+            <p>Capture spontaneous ideas without a fixed date by typing <strong>@undated</strong> (or <strong>@unplanned</strong>) in directive titles, or by clicking <strong>MAKE UNDATED</strong> in the dispatch window.</p>
+          </div>
+        {:else if filteredUndatedStrikes.length === 0}
+          <div class="undated-empty">
+            <p class="no-filter-match">No undated directives match your search query or priority filter.</p>
+          </div>
+        {:else}
+          <div class="undated-list">
+            {#each filteredUndatedStrikes as us (us.id)}
+              <div class="undated-row-card" class:is-deploying={activeDeployUndatedId === us.id}>
+                <div class="undated-row-main">
+                  <div class="undated-row-left">
+                    <div class="undated-box-badge">
+                      <Package size={15} />
+                    </div>
+                    <div class="undated-info-col">
+                      <div class="undated-title-line">
+                        <span class="undated-title">{us.title}</span>
+                        <span class="undated-pri-tag priority-{(us.priority || 'medium').toLowerCase()}">
+                          {(us.priority || 'Medium').toUpperCase()}
+                        </span>
+                        <span class="undated-holding-tag">HOLDING BAY</span>
+                        {#if us.subtask_id}
+                          <span class="undated-subtask-tag">🔗 SUBTASK LINKED</span>
+                        {/if}
+                      </div>
+                      {#if us.notes}
+                        <span class="undated-notes-text" title={us.notes}>{us.notes}</span>
+                      {/if}
+                    </div>
+                  </div>
+
+                  <div class="undated-row-right">
+                    <span class="undated-date-meta">Captured {us.created_at || 'Recently'}</span>
+
+                    <div class="undated-action-btns">
+                      <!-- 1-Click Deploy to Today -->
+                      <button
+                        type="button"
+                        class="btn-deploy-today"
+                        title="Instantly deploy to Today's radar (STANDBY)"
+                        onclick={() => deployUndatedToToday(us.id)}
+                      >
+                        <Zap size={14} strokeWidth={2.5} />
+                        <span>TODAY</span>
+                      </button>
+
+                      <!-- Open Custom Date Schedule Drawer -->
+                      <button
+                        type="button"
+                        class="btn-schedule-undated"
+                        title="Choose custom date to deploy directive"
+                        onclick={() => {
+                          activeDeployUndatedId = activeDeployUndatedId === us.id ? null : us.id;
+                          deployUndatedDateInput = todayFormatted;
+                          isDeployUndatedPickerOpen = false;
+                        }}
+                      >
+                        <Calendar size={14} />
+                        <span>{activeDeployUndatedId === us.id ? 'CLOSE' : 'SCHEDULE'}</span>
+                      </button>
+
+                      <!-- Quick Edit -->
+                      <button
+                        type="button"
+                        class="btn-edit-undated"
+                        title="Edit undated directive"
+                        onclick={(e) => {
+                          openEditModal(us, e);
+                        }}
+                      >
+                        <Edit3 size={14} />
+                      </button>
+
+                      <!-- Delete Permanently -->
+                      <button
+                        type="button"
+                        class="btn-delete-undated"
+                        title="Delete from holding bay permanently"
+                        onclick={() => deleteUndatedStrike(us.id)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Expandable Date Picker Drawer for Custom Scheduling -->
+                {#if activeDeployUndatedId === us.id}
+                  <div class="deploy-drawer">
+                    <div class="drawer-left">
+                      <span class="drawer-label">SELECT TARGET EXECUTION DATE:</span>
+                      <div class="date-picker-wrap">
+                        <button 
+                          type="button" 
+                          class="date-picker-btn mini-btn drawer-btn" 
+                          onclick={(e) => { e.stopPropagation(); isDeployUndatedPickerOpen = !isDeployUndatedPickerOpen; }}
+                        >
+                          <Calendar size={14} />
+                          <span>{deployUndatedDateInput}</span>
+                          <ChevronDown size={13} />
+                        </button>
+
+                        {#if isDeployUndatedPickerOpen}
+                          <!-- svelte-ignore a11y_click_events_have_key_events -->
+                          <!-- svelte-ignore a11y_no_static_element_interactions -->
+                          <div class="date-picker-dropdown modal-popover drawer-popover" onclick={(e) => e.stopPropagation()}>
+                            <Calendar2X 
+                              value={deployUndatedDateInput} 
+                              onselect={(d) => { deployUndatedDateInput = d; isDeployUndatedPickerOpen = false; }} 
+                              minDateStr={todayFormatted}
+                            />
+                          </div>
+                        {/if}
+                      </div>
+                    </div>
+
+                    <div class="drawer-right">
+                      <button 
+                        type="button" 
+                        class="btn-confirm-deploy"
+                        onclick={() => deployUndatedToDate(us.id, deployUndatedDateInput)}
+                      >
+                        <ArrowRight size={14} />
+                        <span>CONFIRM DEPLOYMENT</span>
+                      </button>
+                      <button 
+                        type="button" 
+                        class="btn-cancel-drawer"
+                        onclick={() => { activeDeployUndatedId = null; isDeployUndatedPickerOpen = false; }}
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </div>
+                {/if}
+
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -2706,10 +3680,13 @@
   .day-strike-body { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .day-strike-title { font-size: 15px; font-weight: 800; word-spacing: 0.12em; color: #ffffff; }
   .strike-search-highlight {
-    background: rgba(250, 204, 21, 0.28);
-    color: #fef08a;
-    border-radius: 3px;
-    padding: 0 2px;
+    background: #facc15 !important;
+    color: #000000 !important;
+    font-weight: 900 !important;
+    border-radius: 4px !important;
+    padding: 1px 5px !important;
+    box-shadow: 0 0 12px rgba(250, 204, 21, 0.8) !important;
+    display: inline-block;
     font-style: normal;
   }
 
@@ -2790,6 +3767,15 @@
   .action-icon-btn.repeat:hover { background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.5); color: #c084fc; }
   .action-icon-btn.edit:hover { background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.5); color: #f59e0b; }
   .action-icon-btn.delete:hover { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); color: #ef4444; }
+  .action-icon-btn.abort { color: #f87171; border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.08); }
+  .action-icon-btn.abort:hover:not(:disabled) { background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.6); color: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.3); }
+  .action-icon-btn.abort:disabled { opacity: 0.35; cursor: not-allowed; border-color: rgba(239, 68, 68, 0.15) !important; color: #64748b !important; }
+  .btn-abort-symbol { font-size: 13px; font-weight: 900; line-height: 1; letter-spacing: -0.02em; }
+  .action-icon-btn.rc-locked {
+    opacity: 0.35; cursor: not-allowed;
+    color: #475569 !important; border-color: rgba(71, 85, 105, 0.3) !important;
+  }
+  .action-icon-btn.rc-locked:hover { background: transparent !important; border-color: rgba(71, 85, 105, 0.3) !important; color: #475569 !important; }
 
   /* CUSTOM RECURRENCE MODAL STYLES */
   .recurrence-modal-dialog {
@@ -2842,6 +3828,40 @@
     display: flex; align-items: center; gap: 6px;
   }
   .recurrence-save:hover { box-shadow: 0 6px 20px rgba(168, 85, 247, 0.5) !important; }
+
+  /* Sequential Numbering Toggle */
+  .numbering-toggle-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    background: rgba(168, 85, 247, 0.06); border: 1px solid rgba(168, 85, 247, 0.2);
+    border-radius: 14px; padding: 12px 16px;
+  }
+  .numbering-toggle-left { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+  .numbering-hint {
+    font-size: 11.5px !important; color: #94a3b8; line-height: 1.5;
+    white-space: normal; word-break: break-word;
+  }
+  .numbering-hint strong { color: #c084fc; }
+  .numbering-toggle-switch {
+    flex-shrink: 0; width: 46px; height: 26px; border-radius: 13px;
+    background: rgba(255, 255, 255, 0.1); border: 1.5px solid rgba(255, 255, 255, 0.2);
+    cursor: pointer; position: relative; transition: background 0.22s ease, border-color 0.22s ease;
+    outline: none;
+  }
+  .numbering-toggle-switch:focus-visible {
+    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.4);
+  }
+  .numbering-toggle-switch.on {
+    background: linear-gradient(135deg, #a855f7, #7e22ce);
+    border-color: rgba(168, 85, 247, 0.8);
+    box-shadow: 0 0 14px rgba(168, 85, 247, 0.4);
+  }
+  .toggle-knob {
+    position: absolute; top: 3px; left: 3px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #ffffff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .numbering-toggle-switch.on .toggle-knob { transform: translateX(20px); }
 
   /* SCHEDULE VIEW TACTICAL STYLES */
   .schedule-view-container {
@@ -2962,50 +3982,117 @@
     box-sizing: border-box; overflow: visible; position: relative; z-index: 9600;
   }
 
-  /* MODAL SPECIFIC STYLING FOR STRIKE CREATION / EDIT DIALOG */
+  /* MODAL SPECIFIC STYLING FOR STRIKE CREATION / EDIT DIALOG (ENLARGED & ACCESSIBLE) */
   .strike-modal-dialog {
-    width: 760px !important; min-width: 760px !important; max-width: 92vw !important;
-    height: auto !important; max-height: calc(100vh - 80px) !important;
-    background: rgba(10, 16, 28, 0.98) !important; border: 1.5px solid rgba(245, 158, 11, 0.5) !important;
-    border-radius: 26px !important; padding: 26px 30px !important; display: flex !important; flex-direction: column !important; gap: 20px !important;
-    box-shadow: 0 28px 72px rgba(0, 0, 0, 0.95), 0 0 40px rgba(245, 158, 11, 0.25) !important;
-    box-sizing: border-box !important; overflow: visible !important; position: relative !important; z-index: 9600;
+    width: 840px !important; max-width: 92vw !important; min-width: 0 !important;
+    height: auto !important; max-height: calc(100vh - 100px) !important;
+    background: rgba(10, 16, 28, 0.98) !important; border: 2px solid rgba(245, 158, 11, 0.6) !important;
+    border-radius: 28px !important; padding: 28px 34px !important; display: flex !important; flex-direction: column !important; gap: 20px !important;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.95), 0 0 50px rgba(245, 158, 11, 0.3) !important;
+    box-sizing: border-box !important; overflow: hidden !important; position: relative !important; z-index: 9600;
   }
 
   .strike-modal-body {
-    display: flex; flex-direction: column; gap: 16px; overflow-y: auto; padding-right: 4px;
+    flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; padding-right: 6px;
+  }
+  .strike-modal-body::-webkit-scrollbar { width: 6px; }
+  .strike-modal-body::-webkit-scrollbar-thumb { background: rgba(245, 158, 11, 0.45); border-radius: 99px; }
+  .strike-modal-body::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+
+  .strike-inline-feedback-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    animation: fadeIn 0.15s ease;
+  }
+  .strike-inline-feedback-bar .syntax-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+  }
+  .strike-inline-feedback-bar .syntax-pill.priority-high {
+    background: rgba(239, 68, 68, 0.18);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+  }
+  .strike-inline-feedback-bar .syntax-pill.priority-medium {
+    background: rgba(245, 158, 11, 0.18);
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    color: #fde68a;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+  }
+  .strike-inline-feedback-bar .syntax-pill.priority-low {
+    background: rgba(59, 130, 246, 0.18);
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    color: #93c5fd;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
+  }
+  .strike-inline-feedback-bar .syntax-pill.date-detected {
+    background: rgba(139, 92, 246, 0.18);
+    border: 1px solid rgba(139, 92, 246, 0.5);
+    color: #ddd6fe;
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.25);
+  }
+  .strike-inline-feedback-bar .syntax-pill.date-detected.is-past {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.6);
+    color: #fecaca;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
   }
 
   .strike-modal-dialog .form-row {
-    display: flex; gap: 16px; width: 100%; box-sizing: border-box;
+    display: flex; gap: 20px; width: 100%; box-sizing: border-box;
   }
 
   .strike-modal-dialog .form-group {
-    display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0;
   }
 
   .strike-modal-dialog .form-group label, 
   .strike-modal-dialog .form-group .field-label {
-    font-size: 11px; font-weight: 900; color: #a78bfa; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 2px;
+    font-size: 13px !important; font-weight: 900 !important; color: #c4b5fd !important; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 2px;
   }
 
   .strike-modal-dialog .modal-input,
   .strike-modal-dialog .modal-trigger-full,
   .strike-modal-dialog .date-picker-btn {
-    height: 42px !important; min-height: 42px !important; max-height: 42px !important;
-    padding: 0 14px !important; font-size: 13.5px !important; font-weight: 700 !important;
-    background: rgba(6, 10, 18, 0.95) !important; border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
-    border-radius: 12px !important; color: #ffffff !important; box-sizing: border-box !important;
+    height: 52px !important; min-height: 52px !important; max-height: 52px !important;
+    padding: 0 18px !important; font-size: 16px !important; font-weight: 700 !important;
+    background: rgba(6, 10, 18, 0.96) !important; border: 2px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 14px !important; color: #ffffff !important; box-sizing: border-box !important;
     width: 100% !important; min-width: 100% !important; max-width: 100% !important;
     display: flex !important; align-items: center !important; justify-content: space-between !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .strike-modal-dialog .modal-input-lg {
+    font-size: 17.5px !important; font-weight: 800 !important; letter-spacing: 0.02em;
+  }
+
+  .strike-modal-dialog .modal-input:focus,
+  .strike-modal-dialog .modal-trigger-full:focus {
+    border-color: #f59e0b !important;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4) !important;
   }
 
   .strike-modal-dialog .modal-textarea {
     width: 100% !important; box-sizing: border-box !important;
-    background: rgba(6, 10, 18, 0.95) !important; border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
-    border-radius: 12px !important; padding: 10px 14px !important; color: #ffffff !important;
-    font-size: 13.5px !important; font-weight: 700 !important; outline: none;
-    min-height: 80px; max-height: 140px; resize: vertical;
+    background: rgba(6, 10, 18, 0.96) !important; border: 2px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 16px !important; padding: 14px 18px !important; color: #ffffff !important;
+    font-size: 15.5px !important; font-weight: 700 !important; outline: none; line-height: 1.5;
+    min-height: 95px; max-height: 160px; resize: vertical;
+  }
+
+  .strike-modal-dialog .modal-textarea:focus {
+    border-color: #f59e0b !important;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4) !important;
   }
 
   .strike-modal-dialog .custom-dd-wrap,
@@ -3014,13 +4101,13 @@
   }
 
   .trigger-label-group {
-    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+    display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; font-size: 16px; font-weight: 700;
   }
-  .modal-header { display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 900; color: #f59e0b; letter-spacing: 0.08em; word-spacing: 0.08em; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; font-size: 19px; font-weight: 900; color: #f59e0b; letter-spacing: 0.08em; word-spacing: 0.08em; }
   .close-modal-btn {
-    width: 36px; height: 36px; border-radius: 50% !important;
+    width: 40px; height: 40px; border-radius: 50% !important;
     display: inline-flex; align-items: center; justify-content: center;
-    background: rgba(255, 255, 255, 0.06); border: 1.5px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08); border: 1.5px solid rgba(255, 255, 255, 0.18);
     color: #94a3b8; cursor: pointer; padding: 0; flex-shrink: 0;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -3031,24 +4118,24 @@
     box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
   }
 
-  .modal-body { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; padding-right: 6px; }
-  .form-group { display: flex; flex-direction: column; gap: 7px; flex: 1; min-width: 0; }
-  .form-group label, .form-group .field-label { font-size: 11px; font-weight: 900; color: #a78bfa; letter-spacing: 0.08em; word-spacing: 0.06em; text-transform: uppercase; }
+  .modal-body { display: flex; flex-direction: column; gap: 18px; overflow-y: auto; padding-right: 6px; }
+  .form-group { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+  .form-group label, .form-group .field-label { font-size: 13px; font-weight: 900; color: #a78bfa; letter-spacing: 0.08em; word-spacing: 0.06em; text-transform: uppercase; }
   .modal-input, .modal-textarea {
     width: 100%; box-sizing: border-box;
     background: rgba(6, 10, 18, 0.95); border: 1.5px solid rgba(255, 255, 255, 0.18);
-    border-radius: 9999px; padding: 12px 20px; color: #ffffff; font-size: 14px; font-weight: 700; outline: none;
+    border-radius: 9999px; padding: 14px 22px; color: #ffffff; font-size: 15.5px; font-weight: 700; outline: none;
     caret-color: #f59e0b; transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .modal-textarea { border-radius: 20px !important; }
   .modal-input:focus, .modal-textarea:focus {
     border-color: rgba(245, 158, 11, 0.8); box-shadow: 0 0 16px rgba(245, 158, 11, 0.25);
   }
-  .form-row { display: flex; gap: 16px; width: 100%; box-sizing: border-box; }
-  .modal-footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 6px; }
-  .btn-cancel { padding: 12px 24px; font-size: 13px; font-weight: 900; letter-spacing: 0.04em; word-spacing: 0.06em; background: rgba(255,255,255,0.06); border: 1.5px solid rgba(255,255,255,0.16); color: #fff; border-radius: 9999px; cursor: pointer; transition: all 0.15s ease; }
+  .form-row { display: flex; gap: 18px; width: 100%; box-sizing: border-box; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 14px; margin-top: 10px; }
+  .btn-cancel { padding: 14px 28px; font-size: 14.5px; font-weight: 900; letter-spacing: 0.04em; word-spacing: 0.06em; background: rgba(255,255,255,0.06); border: 1.5px solid rgba(255,255,255,0.16); color: #fff; border-radius: 9999px; cursor: pointer; transition: all 0.15s ease; }
   .btn-cancel:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); }
-  .btn-save { padding: 12px 28px; font-size: 13px; font-weight: 900; letter-spacing: 0.04em; word-spacing: 0.06em; background: linear-gradient(135deg, #f59e0b, #d97706); border: none; color: #000; border-radius: 9999px; cursor: pointer; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.35); transition: all 0.15s ease; }
+  .btn-save { padding: 14px 34px; font-size: 14.5px; font-weight: 900; letter-spacing: 0.04em; word-spacing: 0.06em; background: linear-gradient(135deg, #f59e0b, #d97706); border: none; color: #000; border-radius: 9999px; cursor: pointer; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.35); transition: all 0.15s ease; }
   .btn-save:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(245, 158, 11, 0.55); }
 
   /* RIGID 960px x 680px PENDING DIRECTIVES RESOLUTION WINDOW */
@@ -3136,4 +4223,919 @@
     transform: translateX(4px) !important;
     outline: none;
   }
+
+  /* ═══ TACTICAL BLUEPRINTS STYLES ═══ */
+
+  /* Blueprint Pill in Day View Banner */
+  .blueprint-pill {
+    background: rgba(147, 51, 234, 0.2) !important;
+    border: 1px solid rgba(147, 51, 234, 0.5) !important;
+    color: #c084fc !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-left: auto;
+  }
+  .blueprint-pill:hover {
+    background: rgba(147, 51, 234, 0.35) !important;
+    border-color: rgba(147, 51, 234, 0.8) !important;
+    color: #e9d5ff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(147, 51, 234, 0.3);
+  }
+
+  /* Blueprints Window */
+  .blueprints-drawer {
+    width: 980px !important;
+    min-width: 800px !important;
+    max-width: 95vw !important;
+    height: 640px !important;
+    min-height: 520px !important;
+    max-height: calc(100vh - 60px) !important;
+    background: rgba(8, 12, 22, 0.98) !important;
+    border: 2px solid rgba(168, 85, 247, 0.5) !important;
+    border-radius: 26px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.95), 0 0 45px rgba(168, 85, 247, 0.25) !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+  }
+
+  /* Compact 1-2 line Header */
+  .blueprints-header {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.16), rgba(76, 29, 149, 0.1)) !important;
+    border-bottom: 1.5px solid rgba(168, 85, 247, 0.3) !important;
+    padding: 16px 24px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-shrink: 0;
+  }
+  .blueprints-header .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 17px;
+    font-weight: 900;
+    color: #d8b4fe;
+    letter-spacing: 0.08em;
+  }
+  :global(.blueprint-header-icon) {
+    color: #c084fc;
+  }
+  .blueprint-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 8px;
+    background: rgba(147, 51, 234, 0.35);
+    border: 1px solid rgba(168, 85, 247, 0.6);
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #f3e8ff;
+    letter-spacing: 0.04em;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
+  }
+
+  /* Body */
+  .blueprints-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-sizing: border-box;
+  }
+  .blueprints-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Single-Row Blueprint Card */
+  .blueprint-row-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 18px;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1.5px solid rgba(168, 85, 247, 0.28);
+    border-radius: 16px;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    box-sizing: border-box;
+  }
+  .blueprint-row-card:hover {
+    background: rgba(20, 30, 55, 0.95);
+    border-color: rgba(168, 85, 247, 0.65);
+    transform: translateX(2px);
+    box-shadow: 0 4px 18px rgba(168, 85, 247, 0.15);
+  }
+
+  .bp-row-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+  }
+  .bp-star-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: rgba(168, 85, 247, 0.18);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    color: #c084fc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .bp-info-col {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+  }
+  .bp-title-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .bp-title {
+    font-size: 15.5px;
+    font-weight: 800;
+    color: #f3e8ff;
+    letter-spacing: 0.02em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bp-notes-text {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #94a3b8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 520px;
+  }
+
+  .bp-row-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .bp-date-meta {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .bp-tag {
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .bp-tag.priority-low {
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.35);
+  }
+  .bp-tag.standby {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fde047;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+  }
+
+  .btn-instantiate {
+    height: 38px;
+    padding: 0 16px;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #9333ea, #7e22ce);
+    color: #ffffff;
+    border: 1.5px solid rgba(216, 180, 254, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 3px 10px rgba(147, 51, 234, 0.3);
+    white-space: nowrap;
+  }
+  .btn-instantiate:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 16px rgba(147, 51, 234, 0.5);
+    border-color: #d8b4fe;
+    background: linear-gradient(135deg, #a855f7, #9333ea);
+  }
+  .btn-delete-blueprint {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1.5px solid rgba(239, 68, 68, 0.28);
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+  .btn-delete-blueprint:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: #ef4444;
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+
+  /* Empty State */
+  .blueprints-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 50px 24px;
+    text-align: center;
+    gap: 12px;
+  }
+  .empty-icon-ring.purple-glow {
+    box-shadow: 0 0 25px rgba(168, 85, 247, 0.35);
+    border-color: rgba(168, 85, 247, 0.5);
+    color: #c084fc;
+  }
+  .blueprints-empty h4 {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    color: #f3e8ff;
+    margin: 0;
+  }
+  .blueprints-empty p {
+    font-size: 13.5px;
+    line-height: 1.5;
+    max-width: 400px;
+    color: #94a3b8;
+    margin: 0;
+  }
+
+  /* Save as Blueprint Button (Star) in Edit Modal Header */
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-save-blueprint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: rgba(147, 51, 234, 0.18);
+    border: 1px solid rgba(168, 85, 247, 0.45);
+    border-radius: 8px;
+    color: #c084fc;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .btn-save-blueprint:hover:not(.blueprint-locked):not(.blueprint-saved) {
+    background: rgba(147, 51, 234, 0.35);
+    border-color: rgba(168, 85, 247, 0.75);
+    color: #e9d5ff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(147, 51, 234, 0.25);
+  }
+  .btn-save-blueprint.blueprint-locked {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-save-blueprint.blueprint-saved {
+    background: rgba(34, 197, 94, 0.18) !important;
+    border-color: rgba(34, 197, 94, 0.5) !important;
+    color: #86efac !important;
+    cursor: not-allowed !important;
+    opacity: 0.95 !important;
+  }
+  .btn-save-blueprint.blueprint-saved:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  /* INLINE GHOST AUTOCOMPLETE OVERLAY & SMART INPUT WRAP */
+  .smart-input-wrap {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+  }
+  .smart-input-field {
+    position: relative;
+    z-index: 2;
+    background: transparent !important;
+  }
+  .ghost-overlay {
+    position: absolute;
+    left: 14px;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    z-index: 1;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: pre;
+    overflow: hidden;
+    color: transparent;
+  }
+  .ghost-echo {
+    visibility: hidden;
+  }
+  .ghost-completion {
+    color: rgba(148, 163, 184, 0.75);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+  .ghost-tab-badge {
+    margin-left: 8px;
+    font-size: 9.5px;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(99, 102, 241, 0.25);
+    border: 1px solid rgba(129, 140, 248, 0.5);
+    color: #c7d2fe;
+    letter-spacing: 0.05em;
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
+  }
+  .ghost-hint-pill {
+    font-size: 11px;
+    font-weight: 700;
+    color: #818cf8;
+    background: rgba(99, 102, 241, 0.15);
+    padding: 2px 8px;
+    border-radius: 5px;
+    border: 1px solid rgba(129, 140, 248, 0.35);
+  }
+  .ghost-hint-pill strong {
+    color: #ffffff;
+    font-weight: 900;
+  }
+
+  /* UNDATED STAT PILL (DAY BANNER) */
+  .stat-pill.undated-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 800;
+    border-radius: 9px;
+    background: rgba(99, 102, 241, 0.18);
+    border: 1.5px solid rgba(99, 102, 241, 0.55);
+    color: #c7d2fe;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  .stat-pill.undated-pill:hover {
+    background: rgba(99, 102, 241, 0.35);
+    border-color: rgba(129, 140, 248, 0.95);
+    box-shadow: 0 0 18px rgba(99, 102, 241, 0.5);
+    transform: translateY(-1px);
+    color: #ffffff;
+  }
+
+  /* INLINE SYNTAX PILL FOR UNDATED */
+  .syntax-pill.undated-detected {
+    background: rgba(99, 102, 241, 0.25);
+    border: 1px solid rgba(129, 140, 248, 0.6);
+    color: #c7d2fe;
+    font-weight: 800;
+  }
+
+  /* CREATION MODAL UNDATED MODE TOGGLE & BOX */
+  .field-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .btn-toggle-undated-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #cbd5e1;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-toggle-undated-mode:hover {
+    background: rgba(99, 102, 241, 0.25);
+    border-color: rgba(129, 140, 248, 0.6);
+    color: #e0e7ff;
+  }
+  .btn-toggle-undated-mode.is-active {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    border-color: rgba(199, 210, 254, 0.85);
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(99, 102, 241, 0.5);
+  }
+
+  .undated-mode-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 44px;
+    padding: 0 14px;
+    border-radius: 12px;
+    background: rgba(99, 102, 241, 0.12);
+    border: 1.5px dashed rgba(129, 140, 248, 0.55);
+    color: #c7d2fe;
+    box-sizing: border-box;
+  }
+  :global(.undated-box-icon) {
+    color: #818cf8;
+    flex-shrink: 0;
+  }
+  .undated-box-label {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+
+  /* ═══ TACTICAL UNDATED DIRECTIVES HOLDING BAY MODAL ═══ */
+  .undated-modal-dialog {
+    width: 1080px !important;
+    max-width: 96vw !important;
+    height: 88vh !important;
+    max-height: 88vh !important;
+    background: #0a0e1c !important;
+    border: 1.5px solid rgba(99, 102, 241, 0.45) !important;
+    box-shadow: 0 28px 75px rgba(0, 0, 0, 0.95), 0 0 45px rgba(99, 102, 241, 0.2) !important;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .undated-header {
+    border-bottom: 1px solid rgba(99, 102, 241, 0.25) !important;
+    padding: 16px 20px !important;
+  }
+  :global(.undated-header-icon) {
+    color: #818cf8;
+  }
+  .undated-count-badge {
+    font-size: 11px;
+    font-weight: 900;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(99, 102, 241, 0.25);
+    border: 1px solid rgba(129, 140, 248, 0.5);
+    color: #c7d2fe;
+    letter-spacing: 0.06em;
+  }
+
+  .undated-modal-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 20px;
+    background: rgba(15, 23, 42, 0.6);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .undated-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    background: #040711;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    padding: 0 12px;
+    height: 36px;
+  }
+  :global(.undated-search-icon) {
+    color: #64748b;
+    flex-shrink: 0;
+  }
+  .undated-search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #f1f5f9;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .undated-search-input::placeholder {
+    color: #64748b;
+  }
+  .btn-clear-undated-search {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+  }
+  .btn-clear-undated-search:hover {
+    color: #f1f5f9;
+  }
+
+  .undated-pri-filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .undated-pri-btn {
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 800;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .undated-pri-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
+  }
+  .undated-pri-btn.active {
+    background: rgba(99, 102, 241, 0.25);
+    border-color: rgba(129, 140, 248, 0.7);
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+  }
+  .undated-pri-btn.pri-high.active {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.7);
+  }
+  .undated-pri-btn.pri-med.active {
+    background: rgba(245, 158, 11, 0.25);
+    border-color: rgba(245, 158, 11, 0.7);
+  }
+  .undated-pri-btn.pri-low.active {
+    background: rgba(59, 130, 246, 0.25);
+    border-color: rgba(59, 130, 246, 0.7);
+  }
+
+  .undated-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    max-height: calc(86vh - 120px);
+  }
+
+  .undated-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .undated-row-card {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1.5px solid rgba(99, 102, 241, 0.25);
+    border-radius: 14px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: all 0.2s ease;
+  }
+  .undated-row-card:hover {
+    background: rgba(20, 30, 55, 0.9);
+    border-color: rgba(129, 140, 248, 0.6);
+    box-shadow: 0 4px 18px rgba(99, 102, 241, 0.15);
+  }
+  .undated-row-card.is-deploying {
+    border-color: rgba(245, 158, 11, 0.7);
+    background: rgba(245, 158, 11, 0.05);
+  }
+
+  .undated-row-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .undated-row-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+  }
+  .undated-box-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid rgba(129, 140, 248, 0.45);
+    color: #a5b4fc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .undated-info-col {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+  }
+  .undated-title-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .undated-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.02em;
+  }
+  .undated-pri-tag {
+    font-size: 9.5px;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 5px;
+    letter-spacing: 0.04em;
+  }
+  .undated-pri-tag.priority-high {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+  }
+  .undated-pri-tag.priority-medium {
+    background: rgba(245, 158, 11, 0.2);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    color: #fde047;
+  }
+  .undated-pri-tag.priority-low {
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.45);
+    color: #93c5fd;
+  }
+  .undated-holding-tag {
+    font-size: 9.5px;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(129, 140, 248, 0.35);
+    color: #c7d2fe;
+    letter-spacing: 0.04em;
+  }
+  .undated-subtask-tag {
+    font-size: 9.5px;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(168, 85, 247, 0.15);
+    border: 1px solid rgba(168, 85, 247, 0.35);
+    color: #d8b4fe;
+    letter-spacing: 0.04em;
+  }
+  .undated-notes-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: #94a3b8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 480px;
+  }
+
+  .undated-row-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  .undated-date-meta {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #64748b;
+  }
+  .undated-action-btns {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-deploy-today {
+    height: 34px;
+    padding: 0 12px;
+    font-size: 11.5px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #000000;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 3px 10px rgba(245, 158, 11, 0.3);
+    white-space: nowrap;
+  }
+  .btn-deploy-today:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 15px rgba(245, 158, 11, 0.5);
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  }
+
+  .btn-schedule-undated {
+    height: 34px;
+    padding: 0 12px;
+    font-size: 11.5px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid rgba(129, 140, 248, 0.5);
+    color: #c7d2fe;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .btn-schedule-undated:hover {
+    background: rgba(99, 102, 241, 0.35);
+    border-color: #818cf8;
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+
+  .btn-edit-undated, .btn-delete-undated {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+  .btn-edit-undated {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #94a3b8;
+  }
+  .btn-edit-undated:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+  .btn-delete-undated {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+  }
+  .btn-delete-undated:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: #ef4444;
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+
+  /* CUSTOM DEPLOYMENT DRAWER */
+  .deploy-drawer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 14px;
+    background: rgba(10, 16, 30, 0.95);
+    border: 1px dashed rgba(245, 158, 11, 0.5);
+    border-radius: 10px;
+    margin-top: 4px;
+  }
+  .drawer-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .drawer-label {
+    font-size: 11px;
+    font-weight: 800;
+    color: #f59e0b;
+    letter-spacing: 0.05em;
+  }
+  .drawer-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-confirm-deploy {
+    height: 32px;
+    padding: 0 12px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #ffffff;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-confirm-deploy:hover {
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
+    transform: translateY(-1px);
+  }
+  .btn-cancel-drawer {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 800;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #94a3b8;
+    cursor: pointer;
+  }
+  .btn-cancel-drawer:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+  }
+
+  .undated-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    gap: 12px;
+  }
+  .empty-icon-ring.indigo-glow {
+    box-shadow: 0 0 25px rgba(99, 102, 241, 0.35);
+    border-color: rgba(129, 140, 248, 0.5);
+    color: #a5b4fc;
+  }
+  .undated-empty h4 {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    color: #f3e8ff;
+    margin: 0;
+  }
+  .undated-empty p {
+    font-size: 13px;
+    line-height: 1.5;
+    max-width: 440px;
+    color: #94a3b8;
+    margin: 0;
+  }
+  .no-filter-match {
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
 </style>

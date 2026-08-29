@@ -1,6 +1,6 @@
 {
   "name": "campaigns",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Tactical Task Manager Command Center",
   "main": "electron/main.js",
   "type": "module",
@@ -26,7 +26,7 @@
     "app-builder-bin": "^4.0.0",
     "concurrently": "^9.1.2",
     "cross-env": "^10.1.0",
-    "electron": "^43.3.0",
+    "electron": "^34.3.0",
     "electron-builder": "^26.15.3",
     "lucide-svelte": "^0.475.0",
     "svelte": "^5.20.0",

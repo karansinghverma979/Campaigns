@@ -3,7 +3,7 @@
   import { ChronosMath, getFormattedDate } from '../../../lib/ChronosMath.js';
 
   import { 
-    FileText, CheckCircle2, XCircle, Clock, 
+    FileText, CheckCircle2, XCircle, XOctagon, Clock, 
     CheckSquare, Square, Tag as TagIcon, X, 
     ListTodo, GitCommit, ShieldCheck, ShieldAlert,
     AlertCircle, Zap, ChevronUp, ArrowRight, Calendar
@@ -272,6 +272,9 @@
                   {:else if subtask.status === 'Doing'}
                     <Clock size={16} class="status-icon doing" />
                     <span class="stage-pill-badge doing">DOING</span>
+                  {:else if subtask.status === 'Failed'}
+                    <XOctagon size={16} class="status-icon failed" />
+                    <span class="stage-pill-badge failed">FAILED</span>
                   {:else}
                     <Square size={16} class="status-icon initiated" />
                     <span class="stage-pill-badge initiated">INIT</span>
@@ -640,7 +643,10 @@
   }
   .stage-pill-badge.completed { color: #a7f3d0; background: rgba(52,211,153,0.2); border: 1px solid rgba(52,211,153,0.4); }
   .stage-pill-badge.doing     { color: #fde68a; background: rgba(245,158,11,0.2); border: 1px solid rgba(245,158,11,0.4); }
+  .stage-pill-badge.failed    { color: #fca5a5; background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.4); }
   .stage-pill-badge.initiated { color: var(--text-muted); background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); }
+  :global(.status-icon.failed) { color: #ef4444; }
+  .subtask-item-card.failed { border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.04); }
 
   .subtask-title-wrap {
     flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;

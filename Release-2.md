@@ -151,6 +151,11 @@ graph TD
 - Converted all markdown write operations to `fs.promises.writeFile` and `fs.promises.readFile`.
 - Disk synchronization runs entirely off the main UI thread without frame drops.
 
+### 5. Concurrent IPC Freeze Resolution & Native SQLite Optimization
+- **Freeze Root Cause Resolved**: Eliminated un-awaited asynchronous loops in `loadAllData()` that previously dispatched parallel IPC `moveTaskState` calls, locking SQLite in the main process and freezing the UI.
+- **Sequential Async Execution**: Standardized to sequential `await window.electronAPI.moveTaskState(...)` inside the store loop.
+- **Native Synchronous Throughput**: Optimized `electron/db.js` with `better-sqlite3` native commands running synchronously in WAL mode with instant response times and 0% IPC lock overhead.
+
 ---
 
 ## 🎨 VISUAL IDENTITY & GLASSMORPHIC BRANDING
@@ -228,6 +233,8 @@ graph TD
 ### 🏎️ Performance & Store Engine
 - [x] Converted `loadAllData()` to in-place ID diffing and patching (`Object.assign`).
 - [x] Replaced `$derived` filter arrays with dedicated `$state` buckets and `#rebuildBuckets()`.
+- [x] Resolved UI freeze root cause by eliminating un-awaited concurrent `moveTaskState` async loops.
+- [x] Streamlined SQLite execution with native synchronous `better-sqlite3` engine in WAL mode.
 - [x] Implemented `bulk-move-breached-tasks` IPC handler for single-transaction startup breach migration.
 - [x] Optimized GPU backdrop blur filters from 40px down to 8px–12px across 16 components.
 

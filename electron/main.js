@@ -257,6 +257,8 @@ function buildMarkdownContent(task, dbTags = [], subtasks = [], existingUserNote
         subtaskLines.push(`- [x] ${subTitle} (COMPLETED)`);
       } else if (st.status === 'Doing') {
         subtaskLines.push(`- [ ] ${subTitle} (DOING)`);
+      } else if (st.status === 'Failed') {
+        subtaskLines.push(`- [ ] ~~${subTitle}~~ (FAILED)`);
       } else {
         subtaskLines.push(`- [ ] ${subTitle}`);
       }
@@ -1265,19 +1267,45 @@ ipcMain.handle('get-strikes', () => {
   }
 });
 
-ipcMain.handle('create-strike', (event, { title, created_at, execution_date, priority = 'Medium', status = 'STANDBY', notes = '', subtask_id = null }) => {
+// Generates the next recurrence group code: {totalCount}RC{00001}
+// totalCount is passed in at call time (base + copies). The 5-digit group number auto-increments.
+ipcMain.handle('get-next-rc-id', (event, { totalCount }) => {
+  try {
+    const db = getDb();
+    // Extract the highest numeric group number currently in use
+    const row = db.prepare(`
+      SELECT recurrence_id FROM Strikes
+      WHERE recurrence_id IS NOT NULL
+      ORDER BY id DESC
+      LIMIT 1
+    `).get();
+    let nextNum = 1;
+    if (row && row.recurrence_id) {
+      // Format is "{N}RC{00001}" — extract the digits after "RC"
+      const match = String(row.recurrence_id).match(/RC(\d+)$/);
+      if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    const padded = String(nextNum).padStart(5, '0');
+    const rcId = `${totalCount}RC${padded}`;
+    return { success: true, rcId };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('create-strike', (event, { title, created_at, execution_date, priority = 'Medium', status = 'STANDBY', notes = '', subtask_id = null, recurrence_id = null }) => {
   try {
     const db = getDb();
     if (!title || typeof title !== 'string' || !title.trim()) throw new Error('Strike directive title cannot be empty');
     const validCreated = isValidDDMMYYYY(created_at) ? created_at.trim() : getFormattedToday();
-    const validExec = isValidDDMMYYYY(execution_date) ? execution_date.trim() : getFormattedToday();
     const validPriority = ['High', 'Medium', 'Low'].includes(priority) ? priority : 'Medium';
-    const validStatus = ['STANDBY', 'ENGAGED', 'NEUTRALIZED'].includes(status) ? status : 'STANDBY';
+    const validStatus = ['STANDBY', 'ENGAGED', 'NEUTRALIZED', 'ABORTED', 'PENDING', 'TEMPLATE', 'UNDATED'].includes(status) ? status : 'STANDBY';
+    const validExec = validStatus === 'UNDATED' ? '' : (isValidDDMMYYYY(execution_date) ? execution_date.trim() : getFormattedToday());
 
     const info = db.prepare(`
-      INSERT INTO Strikes (title, created_at, execution_date, priority, status, notes, subtask_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(title.trim(), validCreated, validExec, validPriority, validStatus, notes ? String(notes).trim() : '', subtask_id ? Number(subtask_id) : null);
+      INSERT INTO Strikes (title, created_at, execution_date, priority, status, notes, subtask_id, recurrence_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(title.trim(), validCreated, validExec, validPriority, validStatus, notes ? String(notes).trim() : '', subtask_id ? Number(subtask_id) : null, recurrence_id || null);
     const strike = getHydratedStrike(db, info.lastInsertRowid);
     return { success: true, strike };
   } catch (e) {
@@ -1296,14 +1324,14 @@ ipcMain.handle('update-strike-status', (event, { id, status }) => {
   }
 });
 
-ipcMain.handle('update-strike', (event, { id, title, execution_date, priority, status, notes, subtask_id }) => {
+ipcMain.handle('update-strike', (event, { id, title, execution_date, priority, status, notes, subtask_id, recurrence_id }) => {
   try {
     const db = getDb();
     db.prepare(`
       UPDATE Strikes
-      SET title = ?, execution_date = ?, priority = ?, status = ?, notes = ?, subtask_id = ?
+      SET title = ?, execution_date = ?, priority = ?, status = ?, notes = ?, subtask_id = ?, recurrence_id = ?
       WHERE id = ?
-    `).run(title, execution_date, priority, status, notes, subtask_id || null, id);
+    `).run(title, execution_date, priority, status, notes, subtask_id || null, recurrence_id || null, id);
     const updated = getHydratedStrike(db, id);
     return { success: true, strike: updated };
   } catch (e) {
@@ -1449,6 +1477,114 @@ ipcMain.handle('open-strategies-folder', async () => {
       return { success: true, path: cfg.strategiesPath };
     }
     throw new Error('Strategies directory does not exist on disk.');
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('verify-strategies-integrity', async () => {
+  try {
+    const cfg = getConfig();
+    if (!cfg.strategiesPath) {
+      return { success: false, error: 'Strategies directory is not configured.' };
+    }
+    if (!fs.existsSync(cfg.strategiesPath)) {
+      fs.mkdirSync(cfg.strategiesPath, { recursive: true });
+    }
+
+    const subdirs = [
+      path.join(cfg.strategiesPath, 'Arsenal', 'RawIntel'),
+      path.join(cfg.strategiesPath, 'Arsenal', 'Strategizing'),
+      path.join(cfg.strategiesPath, 'Execution'),
+      path.join(cfg.strategiesPath, 'Breach'),
+      path.join(cfg.strategiesPath, 'Archive', 'Victory'),
+      path.join(cfg.strategiesPath, 'Archive', 'Aborted')
+    ];
+
+    let directoriesCreated = 0;
+    for (const dir of subdirs) {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        directoriesCreated++;
+      }
+    }
+
+    const db = getDb();
+    const allTasks = db.prepare('SELECT * FROM Tasks').all();
+    const taskMap = new Map(allTasks.map(t => [t.id, t]));
+
+    function getAllMdFiles(dir, fileList = []) {
+      if (!fs.existsSync(dir)) return fileList;
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          getAllMdFiles(fullPath, fileList);
+        } else if (entry.isFile() && entry.name.endsWith('.md')) {
+          fileList.push(fullPath);
+        }
+      }
+      return fileList;
+    }
+
+    const mdFiles = getAllMdFiles(cfg.strategiesPath);
+    let validCount = 0;
+    let sentinelCount = 0;
+    const orphanedFiles = [];
+    const corruptFiles = [];
+    const stateMismatches = [];
+
+    for (const filePath of mdFiles) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const match = content.slice(0, 2048).match(/Task Id:\s*(\d+)/i);
+        if (!match) {
+          corruptFiles.push(path.basename(filePath));
+          continue;
+        }
+
+        const taskId = parseInt(match[1], 10);
+        const task = taskMap.get(taskId);
+        if (!task) {
+          orphanedFiles.push({ file: path.basename(filePath), taskId });
+          continue;
+        }
+
+        if (content.includes('<!-- @@CAMPAIGNS_NOTES_START@@ -->')) {
+          sentinelCount++;
+        }
+
+        const expectedFolder = getFolderForState(cfg.strategiesPath, task.state, task.stage);
+        const actualFolder = path.dirname(filePath);
+        if (path.normalize(expectedFolder) !== path.normalize(actualFolder)) {
+          stateMismatches.push({
+            taskId,
+            file: path.basename(filePath),
+            actual: path.basename(actualFolder),
+            expected: path.basename(expectedFolder)
+          });
+        }
+
+        validCount++;
+      } catch (err) {
+        corruptFiles.push(path.basename(filePath));
+      }
+    }
+
+    return {
+      success: true,
+      strategiesPath: cfg.strategiesPath,
+      totalDbTasks: allTasks.length,
+      totalMarkdownFiles: mdFiles.length,
+      validSyncedFiles: validCount,
+      sentinelProtectedCount: sentinelCount,
+      directoriesChecked: subdirs.length,
+      directoriesRepaired: directoriesCreated,
+      orphanedFiles,
+      corruptFiles,
+      stateMismatches,
+      summary: `Verified ${mdFiles.length} strategy file(s) across ${subdirs.length} directories. ${validCount} valid, ${sentinelCount} note-protected.`
+    };
   } catch (e) {
     return { success: false, error: e.message };
   }

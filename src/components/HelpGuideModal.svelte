@@ -3,7 +3,7 @@
   import { 
     HelpCircle, X, Command, Shield, Flame, Archive, Terminal, 
     Zap, BookOpen, Cpu, HardDrive, FileText, Layers, CheckCircle2, 
-    RotateCcw, Sparkles, FolderCog, Compass
+    RotateCcw, Sparkles, FolderCog, Compass, ShieldCheck, Tag, Calendar, AlertTriangle, XOctagon, CheckSquare, Trash2
   } from 'lucide-svelte';
 
   function handleOverlayKeyDown(e) {
@@ -27,8 +27,8 @@
         <div class="title-wrap">
           <HelpCircle size={24} class="header-icon" />
           <div class="title-text">
-            <h3>COMMAND CENTER TACTICAL GUIDE & KEYBOARD SHORTCUTS</h3>
-            <span class="subtitle">SYSTEM OPERATION PROTOCOLS & ARCHITECTURE MANUAL</span>
+            <h3>COMMAND CENTER TACTICAL GUIDE &amp; SYSTEM MANUAL</h3>
+            <span class="subtitle">CAMPAIGNS v3.0 • OPERATIONAL PROTOCOLS, SMART SYNTAX &amp; SHORTCUTS</span>
           </div>
         </div>
         <button type="button" class="close-btn" onclick={() => store.isHelpModalOpen = false} aria-label="Close Guide">
@@ -43,19 +43,19 @@
         <div class="guide-section">
           <div class="section-title">
             <Cpu size={16} class="sec-icon purple" />
-            <span>ABOUT THE APPLICATION & SYSTEM ARCHITECTURE</span>
+            <span>ABOUT THE APPLICATION &amp; SYSTEM ARCHITECTURE (v3.0)</span>
           </div>
 
           <div class="about-card">
             <div class="about-header">
               <div class="about-badge">
                 <Sparkles size={14} />
-                <span>CAMPAIGNS SYSTEM v1.0 • HIGH-PERFORMANCE DESKTOP COMMAND CENTER</span>
+                <span>CAMPAIGNS SYSTEM v3.0 • ZERO-DATA-LOSS DESKTOP COMMAND CENTER</span>
               </div>
             </div>
 
             <p class="about-desc">
-              <strong>Campaigns System</strong> is a local-first, zero-latency campaign and mission management desktop application engineered for personal laptops. Built with <strong>Electron</strong>, <strong>Svelte 5 (Runes State Engine)</strong>, and an embedded <strong>SQLite Database (`sql.js`)</strong> paired with <strong>Markdown (`.md`)</strong> strategy briefings.
+              <strong>Campaigns System</strong> is a high-discipline, local-first operational suite engineered for elite personal campaign tracking, tactical strikes, and markdown strategy briefings. Built with <strong>Electron</strong>, <strong>Svelte 5 (Runes Reactive Engine)</strong>, and an embedded <strong>SQLite Database</strong> seamlessly synchronized with <strong>Obsidian (.md)</strong> strategy documents.
             </p>
 
             <div class="highlights-grid">
@@ -63,38 +63,253 @@
                 <HardDrive size={15} class="hl-icon db" />
                 <div>
                   <strong>Resilient SQLite Database Engine</strong>
-                  <p>Fail-safe auto-recovery automatically re-creates missing or corrupted database files on startup with zero application crashes.</p>
+                  <p>In-place reactive object patching, indexed foreign keys, and bulk IPC transactions ensure 0% DOM thrashing and instant responsiveness.</p>
                 </div>
               </div>
 
               <div class="highlight-item">
                 <FileText size={15} class="hl-icon md" />
                 <div>
-                  <strong>Strategies Markdown Integration</strong>
-                  <p>Every campaign automatically maintains a dedicated `.md` briefing document inside your local `Strategies/` workspace folder.</p>
+                  <strong>Strategies Markdown Protocol 3.0</strong>
+                  <p>On-demand non-destructive `.md` materialization with immutable Task ID headers and sentinel user-notes preservation.</p>
                 </div>
               </div>
 
               <div class="highlight-item">
-                <Zap size={15} class="hl-icon perf" />
+                <ShieldCheck size={15} class="hl-icon perf" />
                 <div>
-                  <strong>Minimum CPU / GPU / RAM Load</strong>
-                  <p>Hardware-accelerated CSS animations and disabled GPU shader disk cache switches ensure instantaneous response and minimal power consumption.</p>
+                  <strong>Tactical Mutability Lockdown</strong>
+                  <p>Zero accidental data loss: Strikes only delete in Standby (converting to Abort otherwise); subtasks only delete in Initiated (converting to Failed).</p>
                 </div>
               </div>
 
               <div class="highlight-item">
-                <RotateCcw size={15} class="hl-icon chronos" />
+                <Zap size={15} class="hl-icon chronos" />
                 <div>
-                  <strong>Chronos Real-Time Deadline Math</strong>
-                  <p>Dynamic date calculations track target deadlines, auto-detect overdue breaches, and manage 2 tactical reschedule permits per campaign.</p>
+                  <strong>Chronos Real-Time Temporal Engine</strong>
+                  <p>Advanced natural language date parsing, real-time deadline countdowns, auto-breach detection, and schedule calendar theater.</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- SECTION 2: CATEGORIZED KEYBOARD SHORTCUTS -->
+        <!-- SECTION 2: SMART INLINE SYNTAX GUIDE -->
+        <div class="guide-section">
+          <div class="section-title">
+            <Zap size={16} class="sec-icon amber" />
+            <span>⚡ SMART INLINE SYNTAX GUIDE (ZERO-MOUSE SPEED ENTRY)</span>
+          </div>
+
+          <p class="section-intro-text">
+            Type natural priority hashtags and date tags directly into the title input box when creating tasks (<kbd>Ctrl</kbd>+<kbd>N</kbd>) or dispatching strikes (<kbd>N</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd>). All tags are evaluated in real time with live visual UI feedback and cleanly stripped upon submitting!
+          </p>
+
+          <div class="syntax-grid">
+            <!-- Syntax Card 1: Priority Hashtags -->
+            <div class="syntax-card">
+              <div class="syntax-card-header">
+                <Tag size={15} class="syntax-icon pri" />
+                <strong>1. PRIORITY HASHTAGS (#PRIORITY)</strong>
+              </div>
+              <div class="syntax-list">
+                <div class="syntax-row">
+                  <span class="syntax-code">#High</span>
+                  <span class="syntax-meaning">Sets Priority to <strong>HIGH</strong> (Red Glow, <Flame size={12} class="inline-icon red" />)</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">#Med</span> or <span class="syntax-code">#Medium</span>
+                  <span class="syntax-meaning">Sets Priority to <strong>MEDIUM</strong> (Amber Glow, <AlertTriangle size={12} class="inline-icon amber" />)</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">#Low</span>
+                  <span class="syntax-meaning">Sets Priority to <strong>LOW</strong> (Blue Glow, <Shield size={12} class="inline-icon blue" />)</span>
+                </div>
+              </div>
+              <div class="syntax-example">
+                <span class="ex-lbl">EXAMPLE:</span>
+                <code>Upgrade TLS Certificates #High</code> ➔ <em>Priority: High, Title: "Upgrade TLS Certificates"</em>
+              </div>
+            </div>
+
+            <!-- Syntax Card 2: Natural Language Date Keywords -->
+            <div class="syntax-card">
+              <div class="syntax-card-header">
+                <Calendar size={15} class="syntax-icon date" />
+                <strong>2. NATURAL RELATIVE DATES (@DATE)</strong>
+              </div>
+              <div class="syntax-list">
+                <div class="syntax-row">
+                  <span class="syntax-code">@today</span> or <span class="syntax-code">@tod</span>
+                  <span class="syntax-meaning">Today's current execution date (+0 days)</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">@tom</span> or <span class="syntax-code">@tomorrow</span> or <span class="syntax-code">@next</span>
+                  <span class="syntax-meaning">Tomorrow's execution date (+1 day)</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">@over</span> or <span class="syntax-code">@overmorrow</span>
+                  <span class="syntax-meaning">Day after tomorrow (+2 days)</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">@+3d</span> or <span class="syntax-code">@in3days</span> or <span class="syntax-code">@+1w</span>
+                  <span class="syntax-meaning">Relative day/week offset (+N days or +N weeks)</span>
+                </div>
+              </div>
+              <div class="syntax-example">
+                <span class="ex-lbl">EXAMPLE:</span>
+                <code>Database Backup @tom #High</code> ➔ <em>Schedules for Tomorrow with High Priority</em>
+              </div>
+            </div>
+
+            <!-- Syntax Card 3: Weekdays & Calendar Bounds -->
+            <div class="syntax-card">
+              <div class="syntax-card-header">
+                <Compass size={15} class="syntax-icon cal" />
+                <strong>3. UPCOMING WEEKDAYS &amp; BOUNDS (@DAY)</strong>
+              </div>
+              <div class="syntax-list">
+                <div class="syntax-row">
+                  <span class="syntax-code">@nextmon</span> / <span class="syntax-code">@mon</span>
+                  <span class="syntax-meaning">Upcoming next <strong>Monday</strong></span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">@nexttue</span> … <span class="syntax-code">@nextsun</span>
+                  <span class="syntax-meaning">Upcoming target weekday (Tue, Wed, Thu, Fri, Sat, Sun)</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">@weekend</span> / <span class="syntax-code">@nextweekend</span>
+                  <span class="syntax-meaning">Upcoming target Saturday</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">@nextmonth</span> or <span class="syntax-code">@eom</span>
+                  <span class="syntax-meaning">1st of next month (<span class="syntax-code">@nextmonth</span>) or End of current month (<span class="syntax-code">@eom</span>)</span>
+                </div>
+              </div>
+              <div class="syntax-example">
+                <span class="ex-lbl">EXAMPLE:</span>
+                <code>Plan Sprint Directives @nextmon</code> ➔ <em>Schedules for coming Monday</em>
+              </div>
+            </div>
+
+            <!-- Syntax Card 4: Numeric Dates & Past Guard -->
+            <div class="syntax-card">
+              <div class="syntax-card-header">
+                <ShieldCheck size={15} class="syntax-icon guard" />
+                <strong>4. EXPLICIT DATES &amp; ANTI-PAST LOCK</strong>
+              </div>
+              <div class="syntax-list">
+                <div class="syntax-row">
+                  <span class="syntax-code">@DD</span> (e.g. <span class="syntax-code">@31</span>)
+                  <span class="syntax-meaning">Resolves against current month and year</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">@DD-MM</span> (e.g. <span class="syntax-code">@01-09</span>)
+                  <span class="syntax-meaning">Resolves day &amp; month against current year</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">@DD-MM-YYYY</span>
+                  <span class="syntax-meaning">Explicit calendar date (also accepts <span class="syntax-code">/</span> or <span class="syntax-code">.</span>)</span>
+                </div>
+                <div class="syntax-row">
+                  <span class="syntax-code">Anti-Past Lock</span>
+                  <span class="syntax-meaning">Past dates are blocked with <span class="syntax-code red">⚠️ PAST DATE BLOCKED</span> alert</span>
+                </div>
+              </div>
+              <div class="syntax-example">
+                <span class="ex-lbl">EXAMPLE:</span>
+                <code>Monthly Audit @01-09 #Med</code> ➔ <em>Schedules for 01-09-2026 with Medium Priority</em>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 3: MUTABILITY LOCKDOWN & DIRECTIVE INTEGRITY -->
+        <div class="guide-section">
+          <div class="section-title">
+            <ShieldCheck size={16} class="sec-icon purple" />
+            <span>⚔️ TACTICAL DIRECTIVE &amp; SUBTASK MUTABILITY RULES (RELEASE 3)</span>
+          </div>
+
+          <div class="lockdown-grid">
+            <div class="lockdown-card strike-lockdown">
+              <div class="lockdown-header">
+                <Zap size={16} class="lockdown-icon amber" />
+                <strong>STRIKES DIRECTIVE INTEGRITY PROTOCOL</strong>
+              </div>
+              <div class="lockdown-body">
+                <div class="lockdown-item">
+                  <span class="status-badge standby">STANDBY STATUS</span>
+                  <p>Unengaged strikes in Standby display the <Trash2 size={13} class="inline-icon" /> <strong>Delete</strong> button (<kbd>Delete</kbd> / <kbd>X</kbd> key) for full removal.</p>
+                </div>
+                <div class="lockdown-item">
+                  <span class="status-badge engaged">ENGAGED / PENDING STATUS</span>
+                  <p>Active/in-progress strikes display the compact <span class="btn-symbol abort">A</span> <strong>Abort Button</strong> to mark <code>ABORTED</code> without losing telemetry.</p>
+                </div>
+                <div class="lockdown-item">
+                  <span class="status-badge completed">NEUTRALIZED STATUS</span>
+                  <p>Successfully executed/completed strikes are locked and finalized. They cannot be aborted or deleted.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="lockdown-card subtask-lockdown">
+              <div class="lockdown-header">
+                <Layers size={16} class="lockdown-icon emerald" />
+                <strong>GRANULAR SUBTASK INTEGRITY PROTOCOL</strong>
+              </div>
+              <div class="lockdown-body">
+                <div class="lockdown-item">
+                  <span class="status-badge initiated">INITIATED STATUS</span>
+                  <p>Only unstarted subtasks in Initiated status can be deleted via the <Trash2 size={13} class="inline-icon" /> <strong>Delete</strong> button (<kbd>Delete</kbd> / <kbd>X</kbd> key).</p>
+                </div>
+                <div class="lockdown-item">
+                  <span class="status-badge doing">DOING STATUS</span>
+                  <p>In-progress subtasks can be advanced to <code>Completed</code> (<kbd>Space</kbd>) or marked with the <span class="btn-symbol fail">F</span> <strong>FAILED Button</strong>.</p>
+                </div>
+                <div class="lockdown-item">
+                  <span class="status-badge completed">COMPLETED STATUS</span>
+                  <p>Finished and completed subtasks are finalized successes. They are locked and cannot be failed or deleted.</p>
+                </div>
+                <div class="lockdown-item">
+                  <span class="status-badge failed">FAILED STATUS</span>
+                  <p>Subtasks marked failed are preserved permanently for mission audit and markdown sync.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 4: STRATEGIES PROTOCOL & VERIFICATION SYSTEM -->
+        <div class="guide-section">
+          <div class="section-title">
+            <FileText size={16} class="sec-icon blue" />
+            <span>📁 STRATEGIES PROTOCOL &amp; VERIFICATION AUDIT SYSTEM</span>
+          </div>
+
+          <div class="strategies-info-card">
+            <div class="strat-row">
+              <div class="strat-col">
+                <strong>6-Tier Workspace Structure</strong>
+                <p>Strategies documents reside in <code>Arsenal/RawIntel</code>, <code>Arsenal/Strategizing</code>, <code>Execution</code>, <code>Breach</code>, <code>Archive/Victory</code>, and <code>Archive/Aborted</code>.</p>
+              </div>
+              <div class="strat-col">
+                <strong>Immutable Frontmatter ID</strong>
+                <p>Every file is anchored with <code>Task Id: &lt;id&gt;</code> in its YAML header, ensuring persistent identity even if renamed in Obsidian.</p>
+              </div>
+              <div class="strat-col">
+                <strong>Sentinel Notes Protection</strong>
+                <p>Personal notes below <code>&lt;!-- @@CAMPAIGNS_NOTES_START@@ --&gt;</code> are 100% immune from overwrites during state shifts and syncs.</p>
+              </div>
+              <div class="strat-col">
+                <strong>One-Click Integrity Audit</strong>
+                <p>Open Storage Config (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>) and click <strong>VERIFY INTEGRITY</strong> to audit directory health, synced files, and notes boundaries.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 5: CATEGORIZED KEYBOARD SHORTCUTS -->
         <div class="guide-section">
           <div class="section-title">
             <Command size={16} class="sec-icon blue" />
@@ -105,28 +320,28 @@
           <div class="category-block">
             <div class="category-header nav">
               <Compass size={14} />
-              <span>1. GLOBAL NAVIGATION & THEATER SWITCHING</span>
+              <span>1. GLOBAL NAVIGATION &amp; THEATER SWITCHING</span>
             </div>
             <div class="shortcut-grid">
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>1</kbd></span>
-                <span class="shortcut-desc">Switch to <strong>EXECUTION</strong> (Active Theater)</span>
+                <span class="shortcut-desc">Switch to <strong>EXECUTION</strong> (Active Battlefield)</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>2</kbd></span>
-                <span class="shortcut-desc">Switch to <strong>ARSENAL</strong> (Intel & Planning)</span>
+                <span class="shortcut-desc">Switch to <strong>ARSENAL</strong> (Intel &amp; Planning)</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>3</kbd></span>
-                <span class="shortcut-desc">Switch to <strong>BREACH</strong> (Overdue Theater)</span>
+                <span class="shortcut-desc">Switch to <strong>BREACH</strong> (Overdue Recovery)</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>4</kbd></span>
-                <span class="shortcut-desc">Switch to <strong>ARCHIVE</strong> (Victory & Aborted)</span>
+                <span class="shortcut-desc">Switch to <strong>ARCHIVE</strong> (Victory &amp; Aborted)</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>5</kbd></span>
-                <span class="shortcut-desc">Switch to <strong>STRIKES</strong> (Target Directives)</span>
+                <span class="shortcut-desc">Switch to <strong>STRIKES</strong> (Temporal Directives)</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>D</kbd></span>
@@ -150,15 +365,15 @@
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>←</kbd> / <kbd>→</kbd></span>
-                <span class="shortcut-desc"><strong>STEP DATE</strong> backward / forward (when no card focused)</span>
+                <span class="shortcut-desc"><strong>STEP DATE</strong> backward / forward</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd></span>
-                <span class="shortcut-desc">Single-Key <strong>TAB CYCLING</strong> (Exec ↔ Ars ↔ Breach ↔ Arch ↔ Strikes)</span>
+                <span class="shortcut-desc">Single-Key <strong>TAB CYCLING</strong> across all 5 theaters</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
-                <span class="shortcut-desc"><strong>NEW DIRECTIVE / CAMPAIGN</strong> (Context-aware creation)</span>
+                <span class="shortcut-desc"><strong>NEW DIRECTIVE / CAMPAIGN</strong> (Auto-focused creation)</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>F</kbd> or <kbd>/</kbd></span>
@@ -166,7 +381,7 @@
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>P</kbd></span>
-                <span class="shortcut-desc">Cycle <strong>PRIORITY FILTERS</strong> (ALL/HIGH/MED/LOW)</span>
+                <span class="shortcut-desc">Cycle <strong>PRIORITY FILTERS</strong> (ALL / HIGH / MED / LOW)</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Esc</kbd></span>
@@ -179,7 +394,7 @@
           <div class="category-block">
             <div class="category-header card-ctrl">
               <Shield size={14} />
-              <span>2. BATTLEFIELD & CARD CONTROLS</span>
+              <span>2. BATTLEFIELD &amp; CARD CONTROLS</span>
             </div>
             <div class="shortcut-grid">
               <div class="shortcut-card">
@@ -208,7 +423,7 @@
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>P</kbd></span>
-                <span class="shortcut-desc">Trigger 60s <strong>PURGE MODAL</strong> on Raw Intel Card</span>
+                <span class="shortcut-desc">Trigger <strong>TYPE-TO-CONFIRM PURGE</strong> on Raw Intel Card</span>
               </div>
             </div>
           </div>
@@ -234,10 +449,10 @@
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Delete</kbd> or <kbd>X</kbd></span>
-                <span class="shortcut-desc"><strong>PURGE</strong> focused Strike (confirmation required)</span>
+                <span class="shortcut-desc"><strong>DELETE (if Standby) or ABORT (if Engaged/Pending)</strong></span>
               </div>
               <div class="shortcut-card">
-                <span class="key-combo"><kbd>N</kbd></span>
+                <span class="key-combo"><kbd>N</kbd> or <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>K</kbd></span>
                 <span class="shortcut-desc">Open <strong>NEW STRIKE DIRECTIVE</strong> Creation Modal</span>
               </div>
               <div class="shortcut-card">
@@ -251,7 +466,7 @@
           <div class="category-block">
             <div class="category-header subtasks">
               <Layers size={14} />
-              <span>4. SUBTASK & MICRO-STEP PROTOCOLS (INSIDE TASK WINDOW)</span>
+              <span>4. SUBTASK &amp; MICRO-STEP PROTOCOLS (INSIDE TASK WINDOW)</span>
             </div>
             <div class="shortcut-grid">
               <div class="shortcut-card">
@@ -260,7 +475,7 @@
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>J</kbd> / <kbd>K</kbd> or <kbd>↓</kbd> / <kbd>↑</kbd></span>
-                <span class="shortcut-desc">Navigate & Highlight <strong>SUBTASK CARDS</strong></span>
+                <span class="shortcut-desc">Navigate &amp; Highlight <strong>SUBTASK CARDS</strong></span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Space</kbd></span>
@@ -276,21 +491,21 @@
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Delete</kbd> or <kbd>X</kbd></span>
-                <span class="shortcut-desc">Delete <strong>FOCUSED SUBTASK</strong></span>
+                <span class="shortcut-desc"><strong>DELETE (if Initiated) or MARK FAILED (if Doing/Completed)</strong></span>
               </div>
             </div>
           </div>
 
-          <!-- Category D: System, Storage & Debug Commands -->
+          <!-- Category E: System, Storage & Debug Commands -->
           <div class="category-block">
             <div class="category-header system">
               <FolderCog size={14} />
-              <span>5. SYSTEM, STORAGE &amp; DEBUG COMMANDS</span>
+              <span>5. SYSTEM, STORAGE &amp; VERIFICATION COMMANDS</span>
             </div>
             <div class="shortcut-grid">
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
-                <span class="shortcut-desc">Open <strong>LOG NEW INTEL</strong> Campaign Creator</span>
+                <span class="shortcut-desc">Open <strong>LOG NEW CAMPAIGN / STRIKE</strong> (Context-aware)</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> (in Dialog)</span>
@@ -298,7 +513,7 @@
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd></span>
-                <span class="shortcut-desc">Open <strong>WORKSPACE & .DB PATH CONFIG</strong> Popup</span>
+                <span class="shortcut-desc">Open <strong>WORKSPACE, .DB &amp; VERIFY INTEGRITY</strong> Modal</span>
               </div>
               <div class="shortcut-card">
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd></span>
@@ -320,60 +535,50 @@
                 <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>?</kbd> or <kbd>Ctrl</kbd> + <kbd>/</kbd></span>
                 <span class="shortcut-desc">Toggle <strong>TACTICAL USER GUIDE</strong> (This Modal)</span>
               </div>
-              <div class="shortcut-card">
-                <span class="key-combo"><kbd>Ctrl</kbd> + <kbd>S</kbd> or <kbd>Ctrl</kbd> + <kbd>Enter</kbd></span>
-                <span class="shortcut-desc">Submit / Save Active Manifest or Modal</span>
-              </div>
-              <div class="shortcut-card">
-                <span class="key-combo"><kbd>Esc</kbd></span>
-                <span class="shortcut-desc">Unfocus Input / Close Active Modal</span>
-              </div>
             </div>
           </div>
 
         </div>
 
-        <!-- SECTION 3: CAMPAIGN LIFE CYCLE STATES & RULES -->
+        <!-- SECTION 6: CAMPAIGN LIFE CYCLE STATES & RULES -->
         <div class="guide-section">
           <div class="section-title">
             <BookOpen size={16} class="sec-icon amber" />
-            <span>CAMPAIGN LIFE CYCLE STATES & PROTOCOLS</span>
+            <span>CAMPAIGN THEATERS &amp; LIFECYCLE DIRECTIVES</span>
           </div>
 
           <div class="rules-grid">
-            
             <div class="rule-card arsenal">
               <div class="rule-header">
                 <Shield size={16} class="rule-icon" />
-                <strong>ARSENAL STATE</strong>
+                <strong>ARSENAL THEATER</strong>
               </div>
-              <p>Staging hub for campaign intelligence. Organizes campaigns into <em>Raw Intel</em> and <em>Strategizing</em> columns. Formulate strategies and attach markdown documentation (.md) before battlefield deployment.</p>
+              <p>Staging hub for campaign intelligence. Formulate strategic plans in <em>Raw Intel</em> and <em>Strategizing</em> columns. Structure subtasks and prepare briefings prior to battlefield deployment.</p>
             </div>
 
             <div class="rule-card execution">
               <div class="rule-header">
                 <Zap size={16} class="rule-icon" />
-                <strong>EXECUTION STATE</strong>
+                <strong>EXECUTION THEATER</strong>
               </div>
-              <p>Active operational battlefield. Requires a valid target deadline. Tracks real-time <strong>DAYS LEFT</strong> countdown. Successfully completed tasks move to <em>Victory</em>.</p>
+              <p>Active operational battlefield. Requires an active target deadline. Real-time countdown tracks days remaining. Completed missions advance to <em>Victory</em>.</p>
             </div>
 
             <div class="rule-card breach">
               <div class="rule-header">
                 <Flame size={16} class="rule-icon" />
-                <strong>BREACH STATE</strong>
+                <strong>BREACH THEATER</strong>
               </div>
-              <p>Overdue theater automatically triggered when a deadline expires. Maximum <strong>2 Reschedule Permits</strong> allowed per campaign to extend deadline and redeploy to Execution.</p>
+              <p>Overdue recovery zone triggered when a deadline lapses. Maximum <strong>2 Reschedule Permits</strong> allowed per campaign to extend timeline and redeploy to Execution.</p>
             </div>
 
             <div class="rule-card archive">
               <div class="rule-header">
                 <Archive size={16} class="rule-icon" />
-                <strong>ARCHIVE STATE</strong>
+                <strong>ARCHIVE THEATER</strong>
               </div>
-              <p>Historical repository storing completed (<em>Victory</em>) or cancelled (<em>Aborted</em>) campaigns. Requires a mandatory tactical End Note upon archiving and preserves the complete timeline history.</p>
+              <p>Permanent historical ledger storing concluded operations (<em>Victory</em> or <em>Aborted</em>). Requires an operational End Note and seals the immutable campaign audit trail.</p>
             </div>
-
           </div>
         </div>
 
@@ -381,7 +586,7 @@
 
       <!-- Modal Footer -->
       <div class="modal-footer">
-        <span class="footer-note">CAMPAIGNS SYSTEM v1.0 • PRESS ESCAPE OR CLICK OUTSIDE TO CLOSE</span>
+        <span class="footer-note">CAMPAIGNS COMMAND CENTER v3.0 • PRESS ESCAPE OR CLICK CLOSE</span>
         <button type="button" class="btn-guide-close" onclick={() => store.isHelpModalOpen = false}>CLOSE GUIDE</button>
       </div>
 
@@ -588,6 +793,243 @@
     color: var(--text-muted);
     line-height: 1.4;
     margin: 0;
+  }
+
+  .section-intro-text {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-main);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* ─── SMART INLINE SYNTAX GRID ─── */
+  .syntax-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .syntax-card {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  }
+
+  .syntax-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: #f3e8ff;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-bottom: 6px;
+  }
+  :global(.syntax-icon.pri) { color: #f87171; }
+  :global(.syntax-icon.date) { color: #c4b5fd; }
+  :global(.syntax-icon.cal) { color: #60a5fa; }
+  :global(.syntax-icon.guard) { color: #34d399; }
+
+  .syntax-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .syntax-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+  }
+
+  .syntax-code {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(139, 92, 246, 0.18);
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    color: #ddd6fe;
+    white-space: nowrap;
+  }
+  .syntax-code.red {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+  }
+
+  .syntax-meaning {
+    color: var(--text-muted);
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .syntax-meaning strong { color: #f3e8ff; }
+
+  .syntax-example {
+    margin-top: 4px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ex-lbl {
+    font-size: 9.5px;
+    font-weight: 900;
+    color: #fbbf24;
+    letter-spacing: 0.08em;
+  }
+  .syntax-example code {
+    font-family: 'Courier New', monospace;
+    color: #93c5fd;
+    font-weight: 700;
+  }
+  .syntax-example em {
+    color: #a7f3d0;
+    font-style: normal;
+    font-weight: 600;
+  }
+
+  :global(.inline-icon) { vertical-align: middle; }
+  :global(.inline-icon.red) { color: #f87171; }
+  :global(.inline-icon.amber) { color: #fbbf24; }
+  :global(.inline-icon.blue) { color: #60a5fa; }
+
+  /* ─── LOCKDOWN GRID ─── */
+  .lockdown-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .lockdown-card {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .lockdown-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: #f3e8ff;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-bottom: 8px;
+  }
+  :global(.lockdown-icon.amber) { color: #fbbf24; }
+  :global(.lockdown-icon.emerald) { color: #34d399; }
+
+  .lockdown-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .lockdown-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .lockdown-item p {
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin: 0;
+  }
+  .lockdown-item p strong { color: #f3e8ff; }
+
+  .status-badge {
+    display: inline-block;
+    align-self: flex-start;
+    font-size: 9.5px;
+    font-weight: 900;
+    letter-spacing: 0.07em;
+    padding: 2px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+  }
+  .status-badge.standby { background: rgba(245, 158, 11, 0.2); color: #fde047; border: 1px solid rgba(245, 158, 11, 0.4); }
+  .status-badge.engaged { background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.4); }
+  .status-badge.doing { background: rgba(245, 158, 11, 0.2); color: #fde047; border: 1px solid rgba(245, 158, 11, 0.4); }
+  .status-badge.completed { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4); }
+  .status-badge.initiated { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.4); }
+  .status-badge.failed { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); }
+
+  .btn-symbol {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 900;
+    vertical-align: middle;
+  }
+  .btn-symbol.abort {
+    background: rgba(245, 158, 11, 0.25);
+    border: 1px solid rgba(245, 158, 11, 0.6);
+    color: #fde047;
+  }
+  .btn-symbol.fail {
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.6);
+    color: #fca5a5;
+  }
+
+  /* ─── STRATEGIES INFO CARD ─── */
+  .strategies-info-card {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 16px 20px;
+  }
+  .strat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .strat-col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .strat-col strong {
+    font-size: 11.5px;
+    font-weight: 800;
+    color: #93c5fd;
+    letter-spacing: 0.02em;
+  }
+  .strat-col p {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0;
+  }
+  .strat-col code {
+    font-family: 'Courier New', monospace;
+    color: #ddd6fe;
+    font-size: 10.5px;
   }
 
   /* CATEGORIZED SHORTCUTS */

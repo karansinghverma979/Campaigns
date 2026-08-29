@@ -61,6 +61,7 @@ class CampaignStore {
       t.subtask_total = subtasks.length;
       t.subtask_completed = subtasks.filter(s => s.status === 'Completed').length;
       t.subtask_doing = subtasks.filter(s => s.status === 'Doing').length;
+      t.subtask_failed = subtasks.filter(s => s.status === 'Failed').length;
     }
   }
 
@@ -365,7 +366,7 @@ class CampaignStore {
         const strikesToPend = [];
         
         for (const s of rawStrikes) {
-          if (s.status !== 'NEUTRALIZED' && s.status !== 'ABORTED' && s.status !== 'PENDING') {
+          if (s.status !== 'NEUTRALIZED' && s.status !== 'ABORTED' && s.status !== 'PENDING' && s.status !== 'TEMPLATE' && s.status !== 'UNDATED') {
             if (s.execution_date) {
               const parsed = ChronosMath.parseSubtaskDate('@' + s.execution_date);
               if (parsed && parsed.isPast) {
@@ -401,17 +402,19 @@ class CampaignStore {
   }
 
   // ⚡ STRIKES CRUD OPERATIONS
-  async createStrike({ title, execution_date, priority = 'Medium', status = 'STANDBY', notes = '' }) {
+  async createStrike({ title, execution_date, priority = 'Medium', status = 'STANDBY', notes = '', subtask_id = null, recurrence_id = null }) {
     if (!window.electronAPI) return null;
     try {
       const created_at = getFormattedDate();
       const res = await window.electronAPI.createStrike({
         title,
         created_at,
-        execution_date: execution_date || created_at,
+        execution_date: status === 'UNDATED' ? '' : (execution_date || created_at),
         priority,
         status,
-        notes
+        notes,
+        subtask_id: subtask_id ? Number(subtask_id) : null,
+        recurrence_id: recurrence_id || null
       });
       if (res.success) {
         this.strikes = [res.strike, ...this.strikes];
@@ -467,6 +470,34 @@ class CampaignStore {
     return false;
   }
 
+  async deployUndatedStrike(id, targetDate) {
+    if (!window.electronAPI) return false;
+    const strike = this.strikes.find(s => s.id === id);
+    if (!strike) return false;
+    try {
+      const res = await window.electronAPI.updateStrike({
+        id,
+        title: strike.title,
+        execution_date: targetDate,
+        priority: strike.priority || 'Medium',
+        status: 'STANDBY',
+        notes: strike.notes || '',
+        subtask_id: strike.subtask_id || null,
+        recurrence_id: strike.recurrence_id || null
+      });
+      if (res.success) {
+        const idx = this.strikes.findIndex(s => s.id === id);
+        if (idx !== -1) this.strikes[idx] = res.strike;
+        this.setHighlightedStrikeId(id);
+        this.showToast(`⚡ Directive deployed to ${targetDate} (STANDBY).`, 'info');
+        return true;
+      }
+    } catch (e) {
+      this.showToast('Deploy error: ' + e.message, 'danger');
+    }
+    return false;
+  }
+
   async updateStrike(strikeData) {
     if (!window.electronAPI) return false;
     try {
@@ -507,6 +538,30 @@ class CampaignStore {
       this.showToast('System synchronized with Strategies directory.', 'info');
     } catch (e) {
       this.showToast('Sync error: ' + e.message, 'danger');
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  async verifyStrategies() {
+    if (!window.electronAPI || !window.electronAPI.verifyStrategiesIntegrity) {
+      this.showToast('Verification API not available in current environment.', 'warning');
+      return null;
+    }
+    this.isLoading = true;
+    try {
+      const res = await window.electronAPI.verifyStrategiesIntegrity();
+      if (res && res.success) {
+        this.showToast(`🛡️ STRATEGIES AUDIT COMPLETE: ${res.validSyncedFiles} files verified, ${res.sentinelProtectedCount} notes protected.`, 'info');
+        this.logError(`[Strategies Verification] ${res.summary} (DB Tasks: ${res.totalDbTasks}, MD Files: ${res.totalMarkdownFiles})`, 'Low');
+        return res;
+      } else {
+        this.showToast('Verification error: ' + (res?.error || 'Unknown error'), 'danger');
+        return null;
+      }
+    } catch (e) {
+      this.showToast('Verification failed: ' + e.message, 'danger');
+      return null;
     } finally {
       this.isLoading = false;
     }

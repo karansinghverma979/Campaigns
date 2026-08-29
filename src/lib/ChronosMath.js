@@ -48,43 +48,177 @@ export class ChronosMath {
   }
 
   /**
-   * Parse @DD-MM-YYYY, @DD-MM, or @DD from subtask title string
-   * Returns { dateStr: 'DD-MM-YYYY', targetDate: Date, isToday: boolean, isFuture: boolean, isPast: boolean, matchedText: string } or null
+   * Resolve a single @token into a Date object (supporting natural keywords, weekdays, offsets, and numeric dates)
    */
-  static parseSubtaskDate(text) {
+  static parseSingleDateToken(tokenText, refDate = new Date()) {
+    if (!tokenText || typeof tokenText !== 'string') return null;
+    const clean = tokenText.replace(/^@/, '').trim().toLowerCase();
+    if (!clean) return null;
+
+    const now = new Date(refDate);
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+    // 1. Relative Day Keywords
+    if (clean === 'today' || clean === 'tod') {
+      return todayMidnight;
+    }
+    if (clean === 'tomorrow' || clean === 'tom' || clean === 'tmrw' || clean === 'tmr' || clean === 'next' || clean === 'nextday') {
+      const d = new Date(todayMidnight);
+      d.setDate(d.getDate() + 1);
+      return d;
+    }
+    if (clean === 'overmorrow' || clean === 'over' || clean === 'ovm' || clean === 'dayaftertomorrow') {
+      const d = new Date(todayMidnight);
+      d.setDate(d.getDate() + 2);
+      return d;
+    }
+
+    // 2. Relative offsets: @+3, @+3d, @in3d, @in3days, @+2w, @in2w, @+1m, @in1m
+    const offsetDayMatch = clean.match(/^(?:\+|in)?(\d+)(?:d|days)?$/);
+    if (offsetDayMatch && (clean.startsWith('+') || clean.startsWith('in') || clean.endsWith('d') || clean.endsWith('days'))) {
+      const days = parseInt(offsetDayMatch[1], 10);
+      if (days >= 0 && days <= 3650) {
+        const d = new Date(todayMidnight);
+        d.setDate(d.getDate() + days);
+        return d;
+      }
+    }
+
+    const offsetWeekMatch = clean.match(/^(?:\+|in)?(\d+)(?:w|weeks|wk|wks)$/);
+    if (offsetWeekMatch) {
+      const weeks = parseInt(offsetWeekMatch[1], 10);
+      if (weeks >= 0 && weeks <= 520) {
+        const d = new Date(todayMidnight);
+        d.setDate(d.getDate() + (weeks * 7));
+        return d;
+      }
+    }
+
+    const offsetMonthMatch = clean.match(/^(?:\+|in)?(\d+)(?:m|months|mon|mons)$/);
+    if (offsetMonthMatch) {
+      const months = parseInt(offsetMonthMatch[1], 10);
+      if (months >= 0 && months <= 120) {
+        const d = new Date(todayMidnight);
+        d.setMonth(d.getMonth() + months);
+        return d;
+      }
+    }
+
+    // 3. Weekday shortcuts
+    const weekdaysMap = {
+      sun: 0, sunday: 0, nextsun: 0, nextsunday: 0,
+      mon: 1, monday: 1, nextmon: 1, nextmonday: 1,
+      tue: 2, tues: 2, tuesday: 2, nexttue: 2, nexttuesday: 2,
+      wed: 3, wednesday: 3, nextwed: 3, nextwednesday: 3,
+      thu: 4, thur: 4, thurs: 4, thursday: 4, nextthu: 4, nextthursday: 4,
+      fri: 5, friday: 5, nextfri: 5, nextfriday: 5,
+      sat: 6, saturday: 6, nextsat: 6, nextsaturday: 6
+    };
+
+    if (weekdaysMap[clean] !== undefined) {
+      const targetDay = weekdaysMap[clean];
+      const currentDay = todayMidnight.getDay();
+      let diff = (targetDay - currentDay + 7) % 7;
+      if (diff === 0) {
+        diff = 7;
+      }
+      const d = new Date(todayMidnight);
+      d.setDate(d.getDate() + diff);
+      return d;
+    }
+
+    // 4. Weekend & Month boundary shortcuts
+    if (clean === 'weekend' || clean === 'thisweekend') {
+      const currentDay = todayMidnight.getDay();
+      let diff = (6 - currentDay + 7) % 7;
+      if (diff === 0) diff = 7;
+      const d = new Date(todayMidnight);
+      d.setDate(d.getDate() + diff);
+      return d;
+    }
+    if (clean === 'nextweekend') {
+      const currentDay = todayMidnight.getDay();
+      let diff = (6 - currentDay + 7) % 7 + 7;
+      const d = new Date(todayMidnight);
+      d.setDate(d.getDate() + diff);
+      return d;
+    }
+    if (clean === 'nextweek' || clean === 'nextwk') {
+      const d = new Date(todayMidnight);
+      d.setDate(d.getDate() + 7);
+      return d;
+    }
+    if (clean === 'nextmonth' || clean === 'nextmonstart' || clean === 'monthstart' || clean === '1st') {
+      return new Date(todayMidnight.getFullYear(), todayMidnight.getMonth() + 1, 1, 0, 0, 0, 0);
+    }
+    if (clean === 'monthend' || clean === 'eom' || clean === 'endofmonth') {
+      return new Date(todayMidnight.getFullYear(), todayMidnight.getMonth() + 1, 0, 0, 0, 0, 0);
+    }
+
+    // 5. Numeric calendar patterns: DD, DD-MM, DD-MM-YYYY (also supports / and .)
+    const numMatch = clean.match(/^(\d{1,2})(?:[-/.])?(\d{1,2})?(?:[-/.])?(\d{2,4})?$/);
+    if (numMatch) {
+      const day = parseInt(numMatch[1], 10);
+      const currentYear = todayMidnight.getFullYear();
+      const currentMonth = todayMidnight.getMonth();
+
+      let month = numMatch[2] !== undefined ? parseInt(numMatch[2], 10) - 1 : currentMonth;
+      let year = numMatch[3] !== undefined ? parseInt(numMatch[3], 10) : currentYear;
+      if (year < 100) year += 2000;
+
+      if (ChronosMath.isValidCalendarDate(day, month, year)) {
+        const d = new Date(year, month, day, 0, 0, 0, 0);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Parse @date keywords, weekdays, and numeric dates from title string
+   * Scans all occurrences; selects the LAST valid date declared.
+   * Returns { dateStr: 'DD-MM-YYYY', targetDate: Date, isToday: boolean, isFuture: boolean, isPast: boolean, matchedText: string, allMatchedTexts: string[] } or null
+   */
+  static parseSubtaskDate(text, refDate = new Date()) {
     if (!text || typeof text !== 'string') return null;
-    const match = text.match(/@(\d{1,2})(?:-(\d{1,2}))?(?:-(\d{2,4}))?\b/);
-    if (!match) return null;
+    const globalRegex = /@([a-zA-Z0-9+]+(?:[-/.][a-zA-Z0-9]+)*)\b/g;
+    const matches = Array.from(text.matchAll(globalRegex));
+    if (matches.length === 0) return null;
 
-    const matchedText = match[0];
-    const day = parseInt(match[1], 10);
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth(); // 0-indexed
-
-    let month = match[2] !== undefined ? parseInt(match[2], 10) - 1 : currentMonth;
-    let year = match[3] !== undefined ? parseInt(match[3], 10) : currentYear;
-    if (year < 100) year += 2000;
-
-    if (!ChronosMath.isValidCalendarDate(day, month, year)) return null;
-
-    const targetDate = new Date(year, month, day, 0, 0, 0, 0);
-    if (isNaN(targetDate.getTime())) return null;
-
+    const now = new Date(refDate);
     const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const targetMs = targetDate.getTime();
     const todayMs = todayDate.getTime();
 
-    const formatted = getFormattedDate(targetDate);
+    let lastValid = null;
+    const allMatchedTexts = [];
 
-    return {
-      dateStr: formatted,
-      targetDate,
-      isToday: targetMs === todayMs,
-      isFuture: targetMs > todayMs,
-      isPast: targetMs < todayMs,
-      matchedText
-    };
+    for (const match of matches) {
+      const matchedText = match[0];
+      const targetDate = ChronosMath.parseSingleDateToken(matchedText, todayDate);
+      if (!targetDate || isNaN(targetDate.getTime())) continue;
+
+      allMatchedTexts.push(matchedText);
+
+      const targetMs = targetDate.getTime();
+      const formatted = getFormattedDate(targetDate);
+
+      lastValid = {
+        dateStr: formatted,
+        targetDate,
+        isToday: targetMs === todayMs,
+        isFuture: targetMs > todayMs,
+        isPast: targetMs < todayMs,
+        matchedText,
+        allMatchedTexts
+      };
+    }
+
+    if (lastValid) {
+      lastValid.allMatchedTexts = allMatchedTexts;
+    }
+
+    return lastValid;
   }
 
   /**
